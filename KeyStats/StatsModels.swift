@@ -26,7 +26,7 @@ func formatMenuBarCompactNumber(_ number: Int) -> String {
     return String(format: "%.\(decimalPlaces)f%@", truncatedValue, units[unitIndex])
 }
 
-private func saturatingNonnegativeSum(_ values: [Int]) -> Int {
+func saturatingNonnegativeSum(_ values: [Int]) -> Int {
     values.reduce(0) { total, value in
         let nonnegative = max(0, value)
         let (sum, overflow) = total.addingReportingOverflow(nonnegative)
@@ -686,4 +686,14 @@ struct AllTimeStats {
             clickActiveDays: 0
         )
     }
+}
+
+/// Current-device backup. Missing hourlyStats is a valid legacy v1 file.
+struct StatsExportPayload: Codable {
+    let version: Int
+    let scope: String?
+    let exportedAt: Date
+    let currentStats: DailyStats
+    let history: [String: DailyStats]
+    let hourlyStats: HourlyStats?
 }

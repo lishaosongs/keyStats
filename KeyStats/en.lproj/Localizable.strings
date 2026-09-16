@@ -356,3 +356,21 @@
 "stats.reset.local.message" = "Only today's statistics on this Mac will be reset. Other devices are unaffected, and the zero snapshot will sync with a higher revision.";
 "button.cancel" = "Cancel";
 "button.confirm" = "Confirm";
+
+// Hourly trends
+"hourly.title" = "Hourly Trends";
+"hourly.byDate" = "Select Date";
+"hourly.recent" = "Last 24 Hours";
+"hourly.previous" = "Previous day";
+"hourly.next" = "Next day";
+"hourly.empty" = "No hourly data for this date";
+"hourly.empty.hint" = "Choose another date to view hourly activity.";
+"hourly.unavailable" = "No hourly data";
+"hourly.summary" = "Recorded totals: %ld keys · %ld clicks · Busiest hour: %@";
+"hourly.note" = "This Mac records since %@ · %@\nTotals compare each device’s local date and hour, using its latest synced hourly data. First/current hours may be partial; Last 24 Hours includes the current hour. Hours skipped by DST are included in an adjacent valid hour.";
+"hourly.hover" = "Hover to compare this Mac with the synced total for the selected metric.";
+"hourly.detail" = "%@ · %ld keys · %ld clicks";
+"hourly.chartAccessibility" = "Hourly counts for the selected metric: synced total (solid blue), this Mac (dashed orange). Each hour lists total / local.";
+"hourly.summary.metric" = "Synced total: %ld · This Mac: %ld · Busiest hour: %@";
+"hourly.detail.metric" = "%@ · Synced total: %@ · This Mac: %@";
+"hourly.import.differentTimeZones" = "These hourly records use different time zones and cannot be merged accurately. Use Replace to restore the backup instead.";

@@ -356,3 +356,21 @@
 "stats.reset.local.message" = "只会重置本机今天的统计，其他设备不受影响；下一次同步会用更高版本传播零值快照。";
 "button.cancel" = "取消";
 "button.confirm" = "确认";
+
+// Hourly trends
+"hourly.title" = "小时趋势";
+"hourly.byDate" = "选择日期";
+"hourly.recent" = "最近 24 小时";
+"hourly.previous" = "前一天";
+"hourly.next" = "后一天";
+"hourly.empty" = "该日期暂无小时数据";
+"hourly.empty.hint" = "切换其他日期，查看小时活动记录。";
+"hourly.unavailable" = "暂无小时数据";
+"hourly.summary" = "已记录合计：按键 %ld · 点击 %ld · 最活跃时段：%@";
+"hourly.note" = "本机从 %@ 开始记录 · %@\n总数按各设备当地日期和小时汇总，以最近同步的小时数据为准。起始和当前小时可能不完整；最近 24 小时包含当前小时。夏令时跳过的小时并入相邻有效时段。";
+"hourly.hover" = "将鼠标移至折线图，比较当前指标的本设备次数和总数。";
+"hourly.detail" = "%@ · 按键 %ld · 点击 %ld";
+"hourly.chartAccessibility" = "所选指标每小时次数：总数为蓝色实线，本设备为橙色虚线。每个小时依次列出总数和本设备次数。";
+"hourly.summary.metric" = "总数：%ld · 本设备：%ld · 最活跃时段：%@";
+"hourly.detail.metric" = "%@ · 总数：%@ · 本设备：%@";
+"hourly.import.differentTimeZones" = "小时记录的时区不同，无法准确合并。请使用覆盖导入恢复备份。";
