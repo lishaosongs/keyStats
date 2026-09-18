@@ -146,6 +146,7 @@
   <data name="Chart_Line" xml:space="preserve"><value>折線</value></data>
   <data name="Chart_Bar" xml:space="preserve"><value>長條</value></data>
   <data name="Range_7Days" xml:space="preserve"><value>7 天</value></data>
+  <data name="Range_3Days" xml:space="preserve"><value>3 天</value></data>
   <data name="Range_30Days" xml:space="preserve"><value>30 天</value></data>
   <data name="Metric_Clicks" xml:space="preserve"><value>點擊</value></data>
   <data name="Metric_Keys" xml:space="preserve"><value>按鍵</value></data>
@@ -169,6 +170,7 @@
   <data name="AppStats_Empty" xml:space="preserve"><value>暫無應用程式資料</value></data>
   <data name="AppStats_UnknownApp" xml:space="preserve"><value>未知應用程式</value></data>
   <data name="History_TotalFormat" xml:space="preserve"><value>總計：{0}</value></data>
+  <data name="History_BreakdownHeader" xml:space="preserve"><value>滑鼠總計</value></data>
   <data name="History_SeriesSynced" xml:space="preserve"><value>同步彙總</value></data>
   <data name="KeyHistory_Empty" xml:space="preserve"><value>暫無按鍵歷史資料</value></data>
   <data name="KeyHistory_SummaryFormat" xml:space="preserve"><value>總按鍵：{0} · 按鍵種類：{1}</value></data>

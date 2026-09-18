@@ -1775,7 +1775,7 @@ public class StatsManager : IDisposable
 
     #region History
 
-    public enum HistoryRange { Today, Yesterday, Week, Month }
+    public enum HistoryRange { Today, Yesterday, ThreeDays, Week, Month, All }
     public enum HistoryMetric { KeyPresses, Clicks, MouseDistance, ScrollDistance }
     public enum KeyHistoryRange { Today, Week, Month, All }
 
@@ -1800,9 +1800,9 @@ public class StatsManager : IDisposable
 
     public HistoryTrendSeries GetHistoryTrendSeries(HistoryRange range, HistoryMetric metric)
     {
-        var dates = GetDatesInRange(range);
         lock (_lock)
         {
+            var dates = GetDatesInRange(range);
             var localSeries = dates
                 .Select(date =>
                 {
@@ -1828,6 +1828,44 @@ public class StatsManager : IDisposable
                 .ToList();
 
             return new HistoryTrendSeries(displaySeries, localSeries);
+        }
+    }
+
+    public (
+        int LeftClicks,
+        int MiddleClicks,
+        int RightClicks,
+        int SideBackClicks,
+        int SideForwardClicks,
+        double MouseDistance,
+        double ScrollDistance
+    ) GetHistoryInputTotals(HistoryRange range)
+    {
+        lock (_lock)
+        {
+            var totals = (
+                LeftClicks: 0,
+                MiddleClicks: 0,
+                RightClicks: 0,
+                SideBackClicks: 0,
+                SideForwardClicks: 0,
+                MouseDistance: 0.0,
+                ScrollDistance: 0.0
+            );
+
+            foreach (var date in GetDatesInRange(range))
+            {
+                var stats = GetDailyStats(date);
+                totals.LeftClicks = SafeAdd(totals.LeftClicks, stats.LeftClicks);
+                totals.MiddleClicks = SafeAdd(totals.MiddleClicks, stats.MiddleClicks);
+                totals.RightClicks = SafeAdd(totals.RightClicks, stats.RightClicks);
+                totals.SideBackClicks = SafeAdd(totals.SideBackClicks, stats.SideBackClicks);
+                totals.SideForwardClicks = SafeAdd(totals.SideForwardClicks, stats.SideForwardClicks);
+                totals.MouseDistance += Math.Max(0, stats.MouseDistance);
+                totals.ScrollDistance += Math.Max(0, stats.ScrollDistance);
+            }
+
+            return totals;
         }
     }
 
@@ -1873,14 +1911,27 @@ public class StatsManager : IDisposable
     private List<DateTime> GetDatesInRange(HistoryRange range)
     {
         var today = DateTime.Today;
-        var startDate = range switch
+        DateTime startDate;
+        if (range == HistoryRange.All)
         {
-            HistoryRange.Today => today,
-            HistoryRange.Yesterday => today.AddDays(-1),
-            HistoryRange.Week => today.AddDays(-6),
-            HistoryRange.Month => today.AddDays(-29),
-            _ => today
-        };
+            startDate = History.Values
+                .Select(stats => stats.Date.Date)
+                .Where(date => date <= today)
+                .DefaultIfEmpty(today)
+                .Min();
+        }
+        else
+        {
+            startDate = range switch
+            {
+                HistoryRange.Today => today,
+                HistoryRange.Yesterday => today.AddDays(-1),
+                HistoryRange.ThreeDays => today.AddDays(-2),
+                HistoryRange.Week => today.AddDays(-6),
+                HistoryRange.Month => today.AddDays(-29),
+                _ => today
+            };
+        }
 
         var dates = new List<DateTime>();
         for (var date = startDate; date <= today; date = date.AddDays(1))
@@ -1982,6 +2033,16 @@ public class StatsManager : IDisposable
         if (distance >= 10000)
             return $"{distance / 1000:F1} k";
         return $"{distance:F0} px";
+    }
+
+    public string FormatCalibratedDistance(double distance)
+    {
+        var meters = Math.Max(0, distance) * GetMetersPerPixel();
+        if (meters >= 1000)
+            return $"{meters / 1000:F2} km";
+        if (meters >= 1)
+            return $"{meters:F1} m";
+        return $"{meters * 100:F1} cm";
     }
 
     #endregion

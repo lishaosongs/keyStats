@@ -160,6 +160,7 @@ public static class Strings
     public static string Chart_Line => Get(nameof(Chart_Line));
     public static string Chart_Bar => Get(nameof(Chart_Bar));
     public static string Range_7Days => Get(nameof(Range_7Days));
+    public static string Range_3Days => Get(nameof(Range_3Days));
     public static string Range_30Days => Get(nameof(Range_30Days));
     public static string Metric_Clicks => Get(nameof(Metric_Clicks));
     public static string Metric_Keys => Get(nameof(Metric_Keys));
@@ -195,6 +196,7 @@ public static class Strings
     public static string AppStats_Empty => Get(nameof(AppStats_Empty));
     public static string AppStats_UnknownApp => Get(nameof(AppStats_UnknownApp));
     public static string History_TotalFormat => Get(nameof(History_TotalFormat));
+    public static string History_BreakdownHeader => Get(nameof(History_BreakdownHeader));
     public static string History_SeriesSynced => Get(nameof(History_SeriesSynced));
     public static string KeyHistory_Empty => Get(nameof(KeyHistory_Empty));
     public static string KeyHistory_SummaryFormat => Get(nameof(KeyHistory_SummaryFormat));

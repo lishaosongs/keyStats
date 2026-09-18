@@ -48,10 +48,17 @@ public class StatsPopupViewModel : ViewModelBase
     private string _peakKPS = "0";
     private string _peakCPS = "0";
     private bool _isPeakPopupOpen;
-    private int _selectedRangeIndex;
+    private int _selectedRangeIndex = 1;
     private int _selectedMetricIndex;
     private int _selectedChartStyleIndex;
     private string _historySummary = string.Format(KeyStats.Properties.Strings.History_TotalFormat, "0");
+    private string _historyLeftClicks = "0";
+    private string _historyMiddleClicks = "0";
+    private string _historyRightClicks = "0";
+    private string _historySideBackClicks = "0";
+    private string _historySideForwardClicks = "0";
+    private string _historyMouseDistance = "0 px";
+    private string _historyScrollDistance = "0 px";
     private ObservableCollection<ChartDataPoint> _chartData = new();
     private ObservableCollection<ChartDataPoint>? _localChartData;
 
@@ -142,7 +149,14 @@ public class StatsPopupViewModel : ViewModelBase
             {
                 App.CurrentApp?.TrackClick("chart_range", new Dictionary<string, object?>
                 {
-                    ["range"] = value == 0 ? "7d" : "30d"
+                    ["range"] = value switch
+                    {
+                        0 => "3d",
+                        1 => "7d",
+                        2 => "30d",
+                        3 => "all",
+                        _ => "unknown"
+                    }
                 });
                 UpdateHistorySection();
             }
@@ -194,6 +208,48 @@ public class StatsPopupViewModel : ViewModelBase
         set => SetProperty(ref _historySummary, value);
     }
 
+    public string HistoryLeftClicks
+    {
+        get => _historyLeftClicks;
+        set => SetProperty(ref _historyLeftClicks, value);
+    }
+
+    public string HistoryMiddleClicks
+    {
+        get => _historyMiddleClicks;
+        set => SetProperty(ref _historyMiddleClicks, value);
+    }
+
+    public string HistoryRightClicks
+    {
+        get => _historyRightClicks;
+        set => SetProperty(ref _historyRightClicks, value);
+    }
+
+    public string HistorySideBackClicks
+    {
+        get => _historySideBackClicks;
+        set => SetProperty(ref _historySideBackClicks, value);
+    }
+
+    public string HistorySideForwardClicks
+    {
+        get => _historySideForwardClicks;
+        set => SetProperty(ref _historySideForwardClicks, value);
+    }
+
+    public string HistoryMouseDistance
+    {
+        get => _historyMouseDistance;
+        set => SetProperty(ref _historyMouseDistance, value);
+    }
+
+    public string HistoryScrollDistance
+    {
+        get => _historyScrollDistance;
+        set => SetProperty(ref _historyScrollDistance, value);
+    }
+
     public ObservableCollection<KeyCountItem> Column1Items { get; } = new();
     public ObservableCollection<KeyCountItem> Column2Items { get; } = new();
     public ObservableCollection<KeyCountItem> Column3Items { get; } = new();
@@ -233,6 +289,7 @@ public class StatsPopupViewModel : ViewModelBase
             if (updateKind == StatsManager.StatsUpdateKind.MouseDistanceOnly)
             {
                 UpdateStats();
+                UpdateHistorySection();
                 return;
             }
 
@@ -329,8 +386,10 @@ public class StatsPopupViewModel : ViewModelBase
     {
         var range = SelectedRangeIndex switch
         {
-            0 => StatsManager.HistoryRange.Week,
-            1 => StatsManager.HistoryRange.Month,
+            0 => StatsManager.HistoryRange.ThreeDays,
+            1 => StatsManager.HistoryRange.Week,
+            2 => StatsManager.HistoryRange.Month,
+            3 => StatsManager.HistoryRange.All,
             _ => StatsManager.HistoryRange.Week
         };
 
@@ -343,7 +402,8 @@ public class StatsPopupViewModel : ViewModelBase
             _ => StatsManager.HistoryMetric.Clicks
         };
 
-        var trendSeries = StatsManager.Instance.GetHistoryTrendSeries(range, metric);
+        var manager = StatsManager.Instance;
+        var trendSeries = manager.GetHistoryTrendSeries(range, metric);
 
         ChartData = new ObservableCollection<ChartDataPoint>(
             trendSeries.Display.Select(point => new ChartDataPoint { Date = point.Date, Value = point.Value }));
@@ -353,8 +413,17 @@ public class StatsPopupViewModel : ViewModelBase
                 trendSeries.Local.Select(point => new ChartDataPoint { Date = point.Date, Value = point.Value }));
 
         var total = trendSeries.Display.Sum(x => x.Value);
-        var formatted = StatsManager.Instance.FormatHistoryValue(metric, total);
+        var formatted = manager.FormatHistoryValue(metric, total);
         HistorySummary = string.Format(KeyStats.Properties.Strings.History_TotalFormat, formatted);
+
+        var totals = manager.GetHistoryInputTotals(range);
+        HistoryLeftClicks = manager.FormatNumber(totals.LeftClicks);
+        HistoryMiddleClicks = manager.FormatNumber(totals.MiddleClicks);
+        HistoryRightClicks = manager.FormatNumber(totals.RightClicks);
+        HistorySideBackClicks = manager.FormatNumber(totals.SideBackClicks);
+        HistorySideForwardClicks = manager.FormatNumber(totals.SideForwardClicks);
+        HistoryMouseDistance = manager.FormatMouseDistance(totals.MouseDistance);
+        HistoryScrollDistance = manager.FormatCalibratedDistance(totals.ScrollDistance);
     }
 
     private void Quit()

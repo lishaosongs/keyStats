@@ -146,6 +146,7 @@
   <data name="Chart_Line" xml:space="preserve"><value>Line</value></data>
   <data name="Chart_Bar" xml:space="preserve"><value>Bar</value></data>
   <data name="Range_7Days" xml:space="preserve"><value>7 days</value></data>
+  <data name="Range_3Days" xml:space="preserve"><value>3 days</value></data>
   <data name="Range_30Days" xml:space="preserve"><value>30 days</value></data>
   <data name="Metric_Clicks" xml:space="preserve"><value>Clicks</value></data>
   <data name="Metric_Keys" xml:space="preserve"><value>Keys</value></data>
@@ -169,6 +170,7 @@
   <data name="AppStats_Empty" xml:space="preserve"><value>No app data yet</value></data>
   <data name="AppStats_UnknownApp" xml:space="preserve"><value>Unknown app</value></data>
   <data name="History_TotalFormat" xml:space="preserve"><value>Total: {0}</value></data>
+  <data name="History_BreakdownHeader" xml:space="preserve"><value>Mouse totals</value></data>
   <data name="History_SeriesSynced" xml:space="preserve"><value>Synced total</value></data>
   <data name="KeyHistory_Empty" xml:space="preserve"><value>No key history data yet</value></data>
   <data name="KeyHistory_SummaryFormat" xml:space="preserve"><value>Total keys: {0} · Distinct keys: {1}</value></data>

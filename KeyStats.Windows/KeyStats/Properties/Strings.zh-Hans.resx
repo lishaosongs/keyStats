@@ -146,6 +146,7 @@
   <data name="Chart_Line" xml:space="preserve"><value>折线</value></data>
   <data name="Chart_Bar" xml:space="preserve"><value>柱状</value></data>
   <data name="Range_7Days" xml:space="preserve"><value>7天</value></data>
+  <data name="Range_3Days" xml:space="preserve"><value>3天</value></data>
   <data name="Range_30Days" xml:space="preserve"><value>30天</value></data>
   <data name="Metric_Clicks" xml:space="preserve"><value>点击</value></data>
   <data name="Metric_Keys" xml:space="preserve"><value>按键</value></data>
@@ -169,6 +170,7 @@
   <data name="AppStats_Empty" xml:space="preserve"><value>暂无应用数据</value></data>
   <data name="AppStats_UnknownApp" xml:space="preserve"><value>未知应用</value></data>
   <data name="History_TotalFormat" xml:space="preserve"><value>总计: {0}</value></data>
+  <data name="History_BreakdownHeader" xml:space="preserve"><value>鼠标总计</value></data>
   <data name="History_SeriesSynced" xml:space="preserve"><value>同步汇总</value></data>
   <data name="KeyHistory_Empty" xml:space="preserve"><value>暂无历史按键数据</value></data>
   <data name="KeyHistory_SummaryFormat" xml:space="preserve"><value>总按键: {0} · 按键种类: {1}</value></data>
