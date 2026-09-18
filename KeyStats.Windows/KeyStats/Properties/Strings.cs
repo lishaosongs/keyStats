@@ -212,7 +212,10 @@ public static class Strings
     public static string Heatmap_BackToToday => Get(nameof(Heatmap_BackToToday));
     public static string Heatmap_NoData => Get(nameof(Heatmap_NoData));
     public static string Heatmap_SummaryFormat => Get(nameof(Heatmap_SummaryFormat));
+    public static string Heatmap_AverageSummaryFormat => Get(nameof(Heatmap_AverageSummaryFormat));
     public static string Heatmap_DatePickerTooltip => Get(nameof(Heatmap_DatePickerTooltip));
+    public static string Heatmap_ModeAverage => Get(nameof(Heatmap_ModeAverage));
+    public static string Heatmap_ModeSum => Get(nameof(Heatmap_ModeSum));
 
     public static string KeyHistory_WindowTitle => Get(nameof(KeyHistory_WindowTitle));
     public static string KeyHistory_HeaderTitle => Get(nameof(KeyHistory_HeaderTitle));

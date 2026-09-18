@@ -5,9 +5,9 @@
         xmlns:p="clr-namespace:KeyStats.Properties"
         Title="{x:Static p:Strings.Heatmap_WindowTitle}"
         Width="1080"
-        Height="460"
+        Height="520"
         MinWidth="860"
-        MinHeight="460"
+        MinHeight="520"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowSurfaceBrush}"
@@ -135,6 +135,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -151,7 +152,81 @@
                        Foreground="{DynamicResource TextSecondaryBrush}"/>
         </StackPanel>
 
-        <Grid Grid.Row="1" Margin="0,0,0,12">
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="{DynamicResource SubtleFillBrush}"
+                    CornerRadius="6"
+                    Padding="3">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="RangeTodayButton"
+                                 Tag="Today"
+                                 Content="{x:Static p:Strings.History_Range_Today}"
+                                 GroupName="HeatmapRange"
+                                 Style="{DynamicResource SegmentedButton}"
+                                 FontSize="11"
+                                 Padding="10,4"
+                                 IsChecked="True"
+                                 Checked="HeatmapRange_Checked"/>
+                    <RadioButton x:Name="RangeWeekButton"
+                                 Tag="Week"
+                                 Content="{x:Static p:Strings.History_Range_Last7Days}"
+                                 GroupName="HeatmapRange"
+                                 Style="{DynamicResource SegmentedButton}"
+                                 FontSize="11"
+                                 Padding="10,4"
+                                 Checked="HeatmapRange_Checked"/>
+                    <RadioButton x:Name="RangeMonthButton"
+                                 Tag="Month"
+                                 Content="{x:Static p:Strings.History_Range_Last30Days}"
+                                 GroupName="HeatmapRange"
+                                 Style="{DynamicResource SegmentedButton}"
+                                 FontSize="11"
+                                 Padding="10,4"
+                                 Checked="HeatmapRange_Checked"/>
+                    <RadioButton x:Name="RangeAllButton"
+                                 Tag="All"
+                                 Content="{x:Static p:Strings.History_Range_All}"
+                                 GroupName="HeatmapRange"
+                                 Style="{DynamicResource SegmentedButton}"
+                                 FontSize="11"
+                                 Padding="10,4"
+                                 Checked="HeatmapRange_Checked"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1"
+                    Margin="8,0,0,0"
+                    Background="{DynamicResource SubtleFillBrush}"
+                    CornerRadius="6"
+                    Padding="3">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="ModeAverageButton"
+                                 Tag="Average"
+                                 Content="{x:Static p:Strings.Heatmap_ModeAverage}"
+                                 GroupName="HeatmapMode"
+                                 Style="{DynamicResource SegmentedButton}"
+                                 FontSize="11"
+                                 Padding="10,4"
+                                 IsChecked="True"
+                                 Checked="HeatmapMode_Checked"/>
+                    <RadioButton x:Name="ModeSumButton"
+                                 Tag="Sum"
+                                 Content="{x:Static p:Strings.Heatmap_ModeSum}"
+                                 GroupName="HeatmapMode"
+                                 Style="{DynamicResource SegmentedButton}"
+                                 FontSize="11"
+                                 Padding="10,4"
+                                 Checked="HeatmapMode_Checked"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
@@ -256,13 +331,13 @@
             </Popup>
         </Grid>
 
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Background="{DynamicResource CardBrush}"
                 BorderBrush="{DynamicResource DividerBrush}"
                 BorderThickness="1"
                 CornerRadius="16"
                 Padding="12,10">
-            <Grid x:Name="HeatmapAnimationHost" ClipToBounds="True">
+            <Grid x:Name="HeatmapAnimationHost" ClipToBounds="True" PreviewMouseWheel="HeatmapAnimationHost_PreviewMouseWheel">
                 <Image x:Name="PreviousSnapshotImage"
                        Stretch="Fill"
                        Visibility="Collapsed"

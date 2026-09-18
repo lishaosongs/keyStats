@@ -180,13 +180,16 @@
 
   <data name="Heatmap_WindowTitle" xml:space="preserve"><value>鍵盤熱力圖</value></data>
   <data name="Heatmap_HeaderTitle" xml:space="preserve"><value>鍵盤熱力圖</value></data>
-  <data name="Heatmap_HeaderSubtitle" xml:space="preserve"><value>完整虛擬鍵盤視圖，按天顯示按鍵熱度</value></data>
+  <data name="Heatmap_HeaderSubtitle" xml:space="preserve"><value>完整虛擬鍵盤視圖，支援按天和歷史範圍顯示按鍵熱度</value></data>
   <data name="Heatmap_PrevDay" xml:space="preserve"><value>前一天</value></data>
   <data name="Heatmap_NextDay" xml:space="preserve"><value>下一天</value></data>
   <data name="Heatmap_BackToToday" xml:space="preserve"><value>回到今天</value></data>
-  <data name="Heatmap_NoData" xml:space="preserve"><value>當天暫無鍵盤活動</value></data>
+  <data name="Heatmap_NoData" xml:space="preserve"><value>所選範圍暫無鍵盤活動</value></data>
   <data name="Heatmap_SummaryFormat" xml:space="preserve"><value>總計 {0} 次按鍵 · {1} 個活躍鍵</value></data>
+  <data name="Heatmap_AverageSummaryFormat" xml:space="preserve"><value>平均每天 {0} 次按鍵 · {1} 個活躍鍵</value></data>
   <data name="Heatmap_DatePickerTooltip" xml:space="preserve"><value>選擇日期</value></data>
+  <data name="Heatmap_ModeAverage" xml:space="preserve"><value>平均</value></data>
+  <data name="Heatmap_ModeSum" xml:space="preserve"><value>總和</value></data>
 
   <data name="KeyHistory_WindowTitle" xml:space="preserve"><value>按鍵歷史</value></data>
   <data name="KeyHistory_HeaderTitle" xml:space="preserve"><value>按鍵歷史</value></data>
