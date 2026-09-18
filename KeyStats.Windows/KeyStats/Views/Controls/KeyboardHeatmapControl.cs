@@ -44,8 +44,9 @@ public class KeyboardHeatmapControl : FrameworkElement
 
     public static readonly HashSet<string> SupportedKeyIds = new(Layout.Select(item => item.Id), StringComparer.Ordinal);
 
-    private Dictionary<string, int> _keyCounts = new(StringComparer.Ordinal);
-    private int _maxCount;
+    private Dictionary<string, double> _keyCounts = new(StringComparer.Ordinal);
+    private double _maxCount;
+    private bool _showDecimals;
 
     public KeyboardHeatmapControl()
     {
@@ -55,12 +56,13 @@ public class KeyboardHeatmapControl : FrameworkElement
         Unloaded += OnUnloaded;
     }
 
-    public void Apply(IDictionary<string, int>? keyCounts)
+    public void Apply(IDictionary<string, double>? keyCounts, bool showDecimals = false)
     {
         _keyCounts = keyCounts == null
-            ? new Dictionary<string, int>(StringComparer.Ordinal)
+            ? new Dictionary<string, double>(StringComparer.Ordinal)
             : keyCounts.ToDictionary(kvp => kvp.Key, kvp => Math.Max(0, kvp.Value), StringComparer.Ordinal);
         _maxCount = _keyCounts.Count == 0 ? 0 : _keyCounts.Values.Max();
+        _showDecimals = showDecimals;
         InvalidateVisual();
     }
 
@@ -220,7 +222,7 @@ public class KeyboardHeatmapControl : FrameworkElement
         drawingContext.DrawText(lowerText, lowerPoint);
     }
 
-    private void DrawCountBadge(DrawingContext drawingContext, int count, Rect frame, double scale, bool isDarkMode)
+    private void DrawCountBadge(DrawingContext drawingContext, double count, Rect frame, double scale, bool isDarkMode)
     {
         if (count <= 0)
         {
@@ -242,7 +244,7 @@ public class KeyboardHeatmapControl : FrameworkElement
         var brush = CreateBrush(textColor);
 
         var fontSize = Math.Max(7, Math.Min(10.5, scale * 0.20));
-        var text = count.ToString("N0", CultureInfo.CurrentCulture);
+        var text = FormatCountText(count);
         var formatted = CreateText(text, fontSize, FontWeights.SemiBold, brush, "Consolas");
 
         var fullWidth = formatted.Width + horizontalPadding * 2;
@@ -283,7 +285,12 @@ public class KeyboardHeatmapControl : FrameworkElement
         drawingContext.DrawText(formatted, textPoint);
     }
 
-    private string CompactCountText(int count, int maximumLength = 4)
+    private string FormatCountText(double count)
+    {
+        return count.ToString(_showDecimals ? "N1" : "N0", CultureInfo.CurrentCulture);
+    }
+
+    private string CompactCountText(double count, int maximumLength = 4)
     {
         string compact;
         if (count >= 1_000_000_000)
@@ -300,7 +307,7 @@ public class KeyboardHeatmapControl : FrameworkElement
         }
         else
         {
-            compact = count.ToString(CultureInfo.InvariantCulture);
+            compact = count.ToString(_showDecimals ? "0.0" : "0", CultureInfo.InvariantCulture);
         }
 
         if (compact.Length <= maximumLength)
@@ -332,7 +339,7 @@ public class KeyboardHeatmapControl : FrameworkElement
         return numberText + suffix;
     }
 
-    private Color ColorForCount(int count, bool isDarkMode)
+    private Color ColorForCount(double count, bool isDarkMode)
     {
         var surface = ResolveColor("SurfaceBrush", isDarkMode ? Color.FromRgb(32, 32, 32) : Color.FromRgb(250, 250, 250));
         var divider = ResolveColor("DividerBrush", isDarkMode ? Color.FromRgb(61, 61, 61) : Color.FromRgb(229, 229, 229));

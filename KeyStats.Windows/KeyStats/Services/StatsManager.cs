@@ -1375,12 +1375,20 @@ public class StatsManager : IDisposable
     #region App Stats Summary
 
     public enum AppStatsRange { Today, Week, Month, All }
+    public enum KeyboardHeatmapRange { Today, Week, Month, All }
+    public enum KeyboardHeatmapMode { Average, Sum }
 
     public sealed class KeyboardHeatmapDay
     {
         public DateTime Date { get; set; }
         public int TotalKeyPresses { get; set; }
         public Dictionary<string, int> KeyCounts { get; set; } = new(StringComparer.Ordinal);
+    }
+
+    public sealed class KeyboardHeatmapSummary
+    {
+        public double TotalKeyPresses { get; set; }
+        public Dictionary<string, double> KeyCounts { get; set; } = new(StringComparer.Ordinal);
     }
 
     public List<AppStats> GetAppStatsSummary(AppStatsRange range)
@@ -1453,6 +1461,65 @@ public class StatsManager : IDisposable
                 KeyCounts = aggregated
             };
         }
+    }
+
+    public KeyboardHeatmapSummary GetKeyboardHeatmapSummary(
+        KeyboardHeatmapRange range,
+        KeyboardHeatmapMode mode)
+    {
+        lock (_lock)
+        {
+            var dates = GetKeyboardHeatmapDates(range);
+            var totalKeyPresses = 0.0;
+            var keyCounts = new Dictionary<string, double>(StringComparer.Ordinal);
+
+            foreach (var date in dates)
+            {
+                var daily = GetDailyStats(date);
+                totalKeyPresses += Math.Max(0, daily.KeyPresses);
+
+                foreach (var keyValue in AggregateKeyboardHeatmapCounts(daily.KeyPressCounts))
+                {
+                    keyCounts[keyValue.Key] = (keyCounts.TryGetValue(keyValue.Key, out var current) ? current : 0) + keyValue.Value;
+                }
+            }
+
+            if (mode == KeyboardHeatmapMode.Average && dates.Count > 0)
+            {
+                totalKeyPresses /= dates.Count;
+                foreach (var key in keyCounts.Keys.ToList())
+                {
+                    keyCounts[key] /= dates.Count;
+                }
+            }
+
+            return new KeyboardHeatmapSummary
+            {
+                TotalKeyPresses = totalKeyPresses,
+                KeyCounts = keyCounts
+            };
+        }
+    }
+
+    private List<DateTime> GetKeyboardHeatmapDates(KeyboardHeatmapRange range)
+    {
+        var today = DateTime.Today;
+        var startDate = range switch
+        {
+            KeyboardHeatmapRange.Today => today,
+            KeyboardHeatmapRange.Week => today.AddDays(-6),
+            KeyboardHeatmapRange.Month => today.AddDays(-29),
+            KeyboardHeatmapRange.All => GetKeyboardHeatmapDateBounds().Start.Date,
+            _ => today
+        };
+
+        var dates = new List<DateTime>();
+        for (var date = startDate.Date; date <= today; date = date.AddDays(1))
+        {
+            dates.Add(date);
+        }
+
+        return dates;
     }
 
     private List<DateTime> GetAppStatsDates(AppStatsRange range)

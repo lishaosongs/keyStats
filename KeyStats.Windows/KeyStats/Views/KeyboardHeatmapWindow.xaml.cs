@@ -28,6 +28,9 @@ public partial class KeyboardHeatmapWindow : Window
     private bool _pendingRefresh;
     private bool _isTransitionAnimating;
     private bool _suppressCalendarSelection;
+    private bool _isReady;
+    private StatsManager.KeyboardHeatmapRange _selectedRange = StatsManager.KeyboardHeatmapRange.Today;
+    private StatsManager.KeyboardHeatmapMode _selectedMode = StatsManager.KeyboardHeatmapMode.Average;
 
     public KeyboardHeatmapWindow()
     {
@@ -41,6 +44,7 @@ public partial class KeyboardHeatmapWindow : Window
         Closed += OnClosed;
         StatsManager.Instance.StatsUpdateRequested += OnStatsUpdateRequested;
         ThemeManager.Instance.ThemeChanged += OnThemeChanged;
+        _isReady = true;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -103,6 +107,44 @@ public partial class KeyboardHeatmapWindow : Window
         DatePickerButton.ToolTip = KeyStats.Properties.Strings.Heatmap_DatePickerTooltip;
     }
 
+    private void HeatmapRange_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_isReady || sender is not RadioButton radio || radio.Tag is not string tag ||
+            !Enum.TryParse<StatsManager.KeyboardHeatmapRange>(tag, out var range))
+        {
+            return;
+        }
+
+        _selectedRange = range;
+        if (range == StatsManager.KeyboardHeatmapRange.Today)
+        {
+            _selectedDate = DateTime.Today;
+        }
+
+        DatePickerPopup.IsOpen = false;
+        App.CurrentApp?.TrackClick("keyboard_heatmap_range", new Dictionary<string, object?>
+        {
+            ["range"] = tag
+        });
+        RefreshData();
+    }
+
+    private void HeatmapMode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_isReady || sender is not RadioButton radio || radio.Tag is not string tag ||
+            !Enum.TryParse<StatsManager.KeyboardHeatmapMode>(tag, out var mode))
+        {
+            return;
+        }
+
+        _selectedMode = mode;
+        App.CurrentApp?.TrackClick("keyboard_heatmap_mode", new Dictionary<string, object?>
+        {
+            ["mode"] = tag
+        });
+        RefreshData();
+    }
+
     private void UpdateAppearance()
     {
         ApplyWindowBackdrop();
@@ -128,24 +170,50 @@ public partial class KeyboardHeatmapWindow : Window
         _endDate = bounds.End.Date;
         _selectedDate = ClampDate(_selectedDate);
 
-        var dayData = manager.GetKeyboardHeatmapDay(_selectedDate);
-        var visibleCounts = dayData.KeyCounts
-            .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
-            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal);
-        KeyboardHeatmapView.Apply(visibleCounts);
+        Dictionary<string, double> visibleCounts;
+        double totalKeyPresses;
+        var showDecimals = _selectedRange != StatsManager.KeyboardHeatmapRange.Today &&
+                           _selectedMode == StatsManager.KeyboardHeatmapMode.Average;
+
+        if (_selectedRange == StatsManager.KeyboardHeatmapRange.Today)
+        {
+            var dayData = manager.GetKeyboardHeatmapDay(_selectedDate);
+            visibleCounts = dayData.KeyCounts
+                .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => (double)kvp.Value, StringComparer.Ordinal);
+            totalKeyPresses = dayData.TotalKeyPresses;
+        }
+        else
+        {
+            var summary = manager.GetKeyboardHeatmapSummary(_selectedRange, _selectedMode);
+            visibleCounts = summary.KeyCounts
+                .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal);
+            totalKeyPresses = summary.TotalKeyPresses;
+        }
+
+        KeyboardHeatmapView.Apply(visibleCounts, showDecimals);
 
         var activeKeys = visibleCounts.Values.Count(value => value > 0);
-        var totalFormatted = dayData.TotalKeyPresses.ToString("N0", CultureInfo.CurrentCulture);
+        var totalFormatted = FormatHeatmapValue(totalKeyPresses, showDecimals);
         var activeFormatted = activeKeys.ToString("N0", CultureInfo.CurrentCulture);
-        SummaryText.Text = string.Format(CultureInfo.CurrentCulture, KeyStats.Properties.Strings.Heatmap_SummaryFormat, totalFormatted, activeFormatted);
+        var summaryFormat = showDecimals
+            ? KeyStats.Properties.Strings.Heatmap_AverageSummaryFormat
+            : KeyStats.Properties.Strings.Heatmap_SummaryFormat;
+        SummaryText.Text = string.Format(CultureInfo.CurrentCulture, summaryFormat, totalFormatted, activeFormatted);
         DateText.Text = DisplayDateString(_selectedDate);
 
-        var hasActivity = dayData.TotalKeyPresses > 0;
+        var hasActivity = totalKeyPresses > 0;
         EmptyOverlay.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
         EmptyBadge.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
 
         UpdateNavigationState();
         UpdateDatePickerState();
+    }
+
+    private static string FormatHeatmapValue(double value, bool showDecimals)
+    {
+        return value.ToString(showDecimals ? "N1" : "N0", CultureInfo.CurrentCulture);
     }
 
     private string DisplayDateString(DateTime date)
@@ -176,10 +244,16 @@ public partial class KeyboardHeatmapWindow : Window
 
     private void UpdateNavigationState()
     {
+        var isDaily = _selectedRange == StatsManager.KeyboardHeatmapRange.Today;
         var today = DateTime.Today;
-        PrevDayButton.IsEnabled = _selectedDate > _startDate;
-        NextDayButton.IsEnabled = _selectedDate < _endDate;
-        BackToTodayButton.Visibility = _selectedDate == today ? Visibility.Collapsed : Visibility.Visible;
+        PrevDayButton.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;
+        NextDayButton.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;
+        DatePickerButton.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;
+        BackToTodayButton.Visibility = isDaily && _selectedDate != today
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PrevDayButton.IsEnabled = isDaily && _selectedDate > _startDate;
+        NextDayButton.IsEnabled = isDaily && _selectedDate < _endDate;
     }
 
     private void UpdateDatePickerState()
@@ -281,8 +355,30 @@ public partial class KeyboardHeatmapWindow : Window
         TransitionToDate(DateTime.Today);
     }
 
+    private void HeatmapAnimationHost_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (_selectedRange != StatsManager.KeyboardHeatmapRange.Today || _isTransitionAnimating || e.Delta == 0)
+        {
+            return;
+        }
+
+        var target = _selectedDate.AddDays(e.Delta > 0 ? -1 : 1);
+        if (target < _startDate || target > _endDate)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        TransitionToDate(target);
+    }
+
     private void TransitionToDate(DateTime targetDate)
     {
+        if (_selectedRange != StatsManager.KeyboardHeatmapRange.Today)
+        {
+            return;
+        }
+
         DatePickerPopup.IsOpen = false;
 
         var target = ClampDate(targetDate);
