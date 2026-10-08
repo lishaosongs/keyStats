@@ -337,7 +337,7 @@ public class StatsPopupViewModel : ViewModelBase
         Column2Items.Clear();
         Column3Items.Clear();
 
-        var limitedItems = items.Take(15).ToList();
+        var limitedItems = items.Take(30).ToList();
 
         for (int i = 0; i < limitedItems.Count; i++)
         {
@@ -347,7 +347,7 @@ public class StatsPopupViewModel : ViewModelBase
                 Count = manager.FormatNumber(limitedItems[i].Count)
             };
 
-            var columnIndex = i / 5;
+            var columnIndex = i / 10;
             switch (columnIndex)
             {
                 case 0:

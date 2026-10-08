@@ -21,6 +21,7 @@ public partial class StatsPopupWindow : Window
 
     private const double DefaultWindowModeWidth = 520;
     private const double DefaultWindowModeHeight = 760;
+    private const double TrayPopupWidth = 960;
     private readonly StatsPopupViewModel _viewModel;
     private readonly bool _isWindowMode;
     private bool _isFullyLoaded;
@@ -387,6 +388,9 @@ public partial class StatsPopupWindow : Window
         const int trayAreaWidth = 250; // System tray area width (right side)
         const int spacing = 10; // Minimum gap between window and mouse/taskbar
 
+        Width = Math.Min(TrayPopupWidth, Math.Max(1, (workingArea.Width - spacing * 2) / dpiScaleX));
+        UpdateLayout();
+
         // Prevent window from exceeding working area at high DPI: clamp window by current screen's available height first, then read actual size for positioning
         var maxHeightDip = Math.Max(200, (workingArea.Height - spacing * 2) / dpiScaleY);
         if (Math.Abs(MaxHeight - maxHeightDip) > 0.5)
@@ -469,8 +473,78 @@ public partial class StatsPopupWindow : Window
         Top = Math.Round(top) / dpiScaleY;
     }
 
+    private void ConfigurePopupSections()
+    {
+        PopupSectionsGrid.RowDefinitions.Clear();
+        PopupSectionsGrid.ColumnDefinitions.Clear();
+        PopupSectionsGrid.Children.Clear();
+
+        var sections = new System.Windows.FrameworkElement[]
+        {
+            TodaySection,
+            KeyBreakdownSection,
+            ActiveAppsSection,
+            HistorySection,
+            MouseTotalsSection
+        };
+        foreach (var section in sections)
+        {
+            section.Margin = _isWindowMode ? new Thickness(0) : new Thickness(4);
+        }
+
+        if (_isWindowMode)
+        {
+            PopupSectionsGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            {
+                Width = new GridLength(1, GridUnitType.Star)
+            });
+
+            foreach (var section in sections)
+            {
+                PopupSectionsGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition
+                {
+                    Height = GridLength.Auto
+                });
+                System.Windows.Controls.Grid.SetRow(section, PopupSectionsGrid.RowDefinitions.Count - 1);
+                PopupSectionsGrid.Children.Add(section);
+            }
+
+            return;
+        }
+
+        for (var column = 0; column < 3; column++)
+        {
+            PopupSectionsGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            {
+                Width = new GridLength(1, GridUnitType.Star)
+            });
+        }
+
+        PopupSectionsGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
+        PopupSectionsGrid.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = GridLength.Auto });
+
+        System.Windows.Controls.Grid.SetRow(TodaySection, 0);
+        System.Windows.Controls.Grid.SetColumn(TodaySection, 0);
+        System.Windows.Controls.Grid.SetRow(KeyBreakdownSection, 0);
+        System.Windows.Controls.Grid.SetColumn(KeyBreakdownSection, 1);
+        System.Windows.Controls.Grid.SetRow(ActiveAppsSection, 0);
+        System.Windows.Controls.Grid.SetColumn(ActiveAppsSection, 2);
+        System.Windows.Controls.Grid.SetRow(HistorySection, 1);
+        System.Windows.Controls.Grid.SetColumn(HistorySection, 0);
+        System.Windows.Controls.Grid.SetColumnSpan(HistorySection, 2);
+        System.Windows.Controls.Grid.SetRow(MouseTotalsSection, 1);
+        System.Windows.Controls.Grid.SetColumn(MouseTotalsSection, 2);
+
+        foreach (var section in sections)
+        {
+            PopupSectionsGrid.Children.Add(section);
+        }
+    }
+
     private void ConfigureWindowForMode()
     {
+        ConfigurePopupSections();
+
         if (FindName("RootBorder") is System.Windows.Controls.Border rootBorder)
         {
             rootBorder.CornerRadius = _isWindowMode ? new CornerRadius(0) : new CornerRadius(8);
