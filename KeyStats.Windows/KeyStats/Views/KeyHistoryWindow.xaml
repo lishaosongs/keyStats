@@ -17,6 +17,31 @@
         <viewmodels:KeyHistoryViewModel/>
     </Window.DataContext>
 
+    <Window.Resources>
+        <Style x:Key="KeyHistorySegmentedButton" TargetType="RadioButton" BasedOn="{StaticResource SegmentedButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SubtleHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource HeatmapSegmentedSelectedBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -39,16 +64,16 @@
         <Border Grid.Row="1" Background="{DynamicResource SubtleFillBrush}" CornerRadius="6" Padding="3" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal">
                 <RadioButton Content="{x:Static p:Strings.History_Range_Today}" GroupName="KeyHistoryRange"
-                             Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="10,4"
+                             Style="{DynamicResource KeyHistorySegmentedButton}" FontSize="11" Padding="10,4"
                              IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}"/>
                 <RadioButton Content="{x:Static p:Strings.History_Range_Last7Days}" GroupName="KeyHistoryRange"
-                             Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="10,4"
+                             Style="{DynamicResource KeyHistorySegmentedButton}" FontSize="11" Padding="10,4"
                              IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=1}"/>
                 <RadioButton Content="{x:Static p:Strings.History_Range_Last30Days}" GroupName="KeyHistoryRange"
-                             Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="10,4"
+                             Style="{DynamicResource KeyHistorySegmentedButton}" FontSize="11" Padding="10,4"
                              IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=2}"/>
                 <RadioButton Content="{x:Static p:Strings.History_Range_All}" GroupName="KeyHistoryRange"
-                             Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="10,4"
+                             Style="{DynamicResource KeyHistorySegmentedButton}" FontSize="11" Padding="10,4"
                              IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=3}"/>
             </StackPanel>
         </Border>
