@@ -143,6 +143,10 @@ public static class Strings
     public static string Stats_KeyPresses => Get(nameof(Stats_KeyPresses));
     public static string Stats_MouseClicks => Get(nameof(Stats_MouseClicks));
     public static string Stats_MouseClickDetail => Get(nameof(Stats_MouseClickDetail));
+    public static string MouseTotals_RangeWeek => Get(nameof(MouseTotals_RangeWeek));
+    public static string MouseTotals_RangeMonth => Get(nameof(MouseTotals_RangeMonth));
+    public static string MouseTotals_RangeYear => Get(nameof(MouseTotals_RangeYear));
+    public static string MouseTotals_RangeAll => Get(nameof(MouseTotals_RangeAll));
     public static string Click_Left => Get(nameof(Click_Left));
     public static string Click_Middle => Get(nameof(Click_Middle));
     public static string Click_Right => Get(nameof(Click_Right));

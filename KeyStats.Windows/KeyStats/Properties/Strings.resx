@@ -129,6 +129,10 @@
   <data name="Stats_KeyPresses" xml:space="preserve"><value>Key Presses</value></data>
   <data name="Stats_MouseClicks" xml:space="preserve"><value>Mouse Clicks</value></data>
   <data name="Stats_MouseClickDetail" xml:space="preserve"><value>Click Breakdown</value></data>
+  <data name="MouseTotals_RangeWeek" xml:space="preserve"><value>Week</value></data>
+  <data name="MouseTotals_RangeMonth" xml:space="preserve"><value>Month</value></data>
+  <data name="MouseTotals_RangeYear" xml:space="preserve"><value>Year</value></data>
+  <data name="MouseTotals_RangeAll" xml:space="preserve"><value>All</value></data>
   <data name="Click_Left" xml:space="preserve"><value>Left</value></data>
   <data name="Click_Middle" xml:space="preserve"><value>Middle</value></data>
   <data name="Click_Right" xml:space="preserve"><value>Right</value></data>

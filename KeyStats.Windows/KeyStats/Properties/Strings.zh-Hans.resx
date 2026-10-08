@@ -129,6 +129,10 @@
   <data name="Stats_KeyPresses" xml:space="preserve"><value>按键次数</value></data>
   <data name="Stats_MouseClicks" xml:space="preserve"><value>鼠标点击</value></data>
   <data name="Stats_MouseClickDetail" xml:space="preserve"><value>鼠标点击明细</value></data>
+  <data name="MouseTotals_RangeWeek" xml:space="preserve"><value>每周</value></data>
+  <data name="MouseTotals_RangeMonth" xml:space="preserve"><value>每月</value></data>
+  <data name="MouseTotals_RangeYear" xml:space="preserve"><value>每年</value></data>
+  <data name="MouseTotals_RangeAll" xml:space="preserve"><value>全部</value></data>
   <data name="Click_Left" xml:space="preserve"><value>左键</value></data>
   <data name="Click_Middle" xml:space="preserve"><value>中键</value></data>
   <data name="Click_Right" xml:space="preserve"><value>右键</value></data>

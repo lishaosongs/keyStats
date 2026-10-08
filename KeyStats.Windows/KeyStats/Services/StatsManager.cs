@@ -1845,6 +1845,7 @@ public class StatsManager : IDisposable
 
     public enum HistoryRange { Today, Yesterday, ThreeDays, Week, Month, All }
     public enum HistoryMetric { KeyPresses, Clicks, MouseDistance, ScrollDistance }
+    public enum MouseTotalsRange { Week, Month, Year, All }
     public enum KeyHistoryRange { Today, Week, Month, All }
 
     public sealed class HistoryTrendSeries
@@ -1907,7 +1908,7 @@ public class StatsManager : IDisposable
         int SideForwardClicks,
         double MouseDistance,
         double ScrollDistance
-    ) GetHistoryInputTotals(HistoryRange range)
+    ) GetHistoryInputTotals(MouseTotalsRange range)
     {
         lock (_lock)
         {
@@ -1921,7 +1922,7 @@ public class StatsManager : IDisposable
                 ScrollDistance: 0.0
             );
 
-            foreach (var date in GetDatesInRange(range))
+            foreach (var date in GetDatesInMouseTotalsRange(range))
             {
                 var stats = GetDailyStats(date);
                 totals.LeftClicks = SafeAdd(totals.LeftClicks, stats.LeftClicks);
@@ -1974,6 +1975,34 @@ public class StatsManager : IDisposable
 
             return sorted.ToList();
         }
+    }
+
+    private List<DateTime> GetDatesInMouseTotalsRange(MouseTotalsRange range)
+    {
+        var today = DateTime.Today;
+        var startDate = range switch
+        {
+            MouseTotalsRange.Week => today.AddDays(-(((int)today.DayOfWeek + 6) % 7)),
+            MouseTotalsRange.Month => new DateTime(today.Year, today.Month, 1),
+            MouseTotalsRange.Year => new DateTime(today.Year, 1, 1),
+            MouseTotalsRange.All => History.Values
+                .Select(stats => stats.Date.Date)
+                .Append(CurrentStats.Date.Date)
+                .Concat(_displayStatsAggregator != null && _isSyncEnabledProvider?.Invoke() == true
+                    ? _displayStatsAggregator.GetRemoteDays()
+                    : Array.Empty<DateTime>())
+                .Where(date => date <= today)
+                .DefaultIfEmpty(today)
+                .Min(),
+            _ => today
+        };
+
+        var dates = new List<DateTime>();
+        for (var date = startDate; date <= today; date = date.AddDays(1))
+        {
+            dates.Add(date);
+        }
+        return dates;
     }
 
     private List<DateTime> GetDatesInRange(HistoryRange range)

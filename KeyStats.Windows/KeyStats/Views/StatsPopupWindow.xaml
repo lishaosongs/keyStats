@@ -497,6 +497,22 @@
             <!-- Mouse totals -->
             <TextBlock Text="{x:Static p:Strings.History_BreakdownHeader}" Style="{DynamicResource SectionTitle}"
                        Margin="4,2,0,6"/>
+            <Border Background="{DynamicResource SubtleFillBrush}" CornerRadius="4" Padding="2" Margin="0,0,0,6">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <RadioButton Content="{x:Static p:Strings.MouseTotals_RangeWeek}" GroupName="MouseTotalsRange"
+                                 Style="{DynamicResource HistorySegmentedButton}" FontSize="8" Padding="2,3"
+                                 IsChecked="{Binding SelectedMouseTotalsRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}"/>
+                    <RadioButton Content="{x:Static p:Strings.MouseTotals_RangeMonth}" GroupName="MouseTotalsRange"
+                                 Style="{DynamicResource HistorySegmentedButton}" FontSize="8" Padding="2,3"
+                                 IsChecked="{Binding SelectedMouseTotalsRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=1}"/>
+                    <RadioButton Content="{x:Static p:Strings.MouseTotals_RangeYear}" GroupName="MouseTotalsRange"
+                                 Style="{DynamicResource HistorySegmentedButton}" FontSize="8" Padding="2,3"
+                                 IsChecked="{Binding SelectedMouseTotalsRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=2}"/>
+                    <RadioButton Content="{x:Static p:Strings.MouseTotals_RangeAll}" GroupName="MouseTotalsRange"
+                                 Style="{DynamicResource HistorySegmentedButton}" FontSize="8" Padding="2,3"
+                                 IsChecked="{Binding SelectedMouseTotalsRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=3}"/>
+                </StackPanel>
+            </Border>
             <Border Style="{DynamicResource CardBorder}" Margin="0,0,0,4" Padding="10,9">
                 <StackPanel>
                     <Grid Margin="0,0,0,8">

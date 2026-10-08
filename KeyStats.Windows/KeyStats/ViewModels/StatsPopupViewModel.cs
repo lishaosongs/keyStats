@@ -49,6 +49,7 @@ public class StatsPopupViewModel : ViewModelBase
     private string _peakCPS = "0";
     private bool _isPeakPopupOpen;
     private int _selectedRangeIndex = 1;
+    private int _selectedMouseTotalsRangeIndex = 3;
     private int _selectedMetricIndex;
     private int _selectedChartStyleIndex;
     private string _historySummary = string.Format(KeyStats.Properties.Strings.History_TotalFormat, "0");
@@ -159,6 +160,29 @@ public class StatsPopupViewModel : ViewModelBase
                     }
                 });
                 UpdateHistorySection();
+            }
+        }
+    }
+
+    public int SelectedMouseTotalsRangeIndex
+    {
+        get => _selectedMouseTotalsRangeIndex;
+        set
+        {
+            if (SetProperty(ref _selectedMouseTotalsRangeIndex, value))
+            {
+                App.CurrentApp?.TrackClick("mouse_totals_range", new Dictionary<string, object?>
+                {
+                    ["range"] = value switch
+                    {
+                        0 => "week",
+                        1 => "month",
+                        2 => "year",
+                        3 => "all",
+                        _ => "unknown"
+                    }
+                });
+                UpdateMouseTotals();
             }
         }
     }
@@ -416,15 +440,29 @@ public class StatsPopupViewModel : ViewModelBase
         var formatted = manager.FormatHistoryValue(metric, total);
         HistorySummary = string.Format(KeyStats.Properties.Strings.History_TotalFormat, formatted);
 
-        var totals = manager.GetHistoryInputTotals(range);
-        HistoryLeftClicks = manager.FormatNumber(totals.LeftClicks);
-        HistoryMiddleClicks = manager.FormatNumber(totals.MiddleClicks);
-        HistoryRightClicks = manager.FormatNumber(totals.RightClicks);
-        HistorySideBackClicks = manager.FormatNumber(totals.SideBackClicks);
-        HistorySideForwardClicks = manager.FormatNumber(totals.SideForwardClicks);
-        HistoryMouseDistance = manager.FormatMouseDistance(totals.MouseDistance);
-        HistoryScrollDistance = manager.FormatCalibratedDistance(totals.ScrollDistance);
+        UpdateMouseTotals();
     }
+
+    private void UpdateMouseTotals()
+    {
+        var totals = StatsManager.Instance.GetHistoryInputTotals(MapMouseTotalsRange(SelectedMouseTotalsRangeIndex));
+        HistoryLeftClicks = StatsManager.Instance.FormatNumber(totals.LeftClicks);
+        HistoryMiddleClicks = StatsManager.Instance.FormatNumber(totals.MiddleClicks);
+        HistoryRightClicks = StatsManager.Instance.FormatNumber(totals.RightClicks);
+        HistorySideBackClicks = StatsManager.Instance.FormatNumber(totals.SideBackClicks);
+        HistorySideForwardClicks = StatsManager.Instance.FormatNumber(totals.SideForwardClicks);
+        HistoryMouseDistance = StatsManager.Instance.FormatMouseDistance(totals.MouseDistance);
+        HistoryScrollDistance = StatsManager.Instance.FormatCalibratedDistance(totals.ScrollDistance);
+    }
+
+    private static StatsManager.MouseTotalsRange MapMouseTotalsRange(int index) => index switch
+    {
+        0 => StatsManager.MouseTotalsRange.Week,
+        1 => StatsManager.MouseTotalsRange.Month,
+        2 => StatsManager.MouseTotalsRange.Year,
+        3 => StatsManager.MouseTotalsRange.All,
+        _ => StatsManager.MouseTotalsRange.All
+    };
 
     private void Quit()
     {
