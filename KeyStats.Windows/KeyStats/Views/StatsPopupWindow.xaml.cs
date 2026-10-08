@@ -492,6 +492,17 @@ public partial class StatsPopupWindow : Window
             section.Margin = _isWindowMode ? new Thickness(0) : new Thickness(4);
         }
 
+        if (!_isWindowMode)
+        {
+            ActiveAppsSection.SetBinding(
+                System.Windows.FrameworkElement.HeightProperty,
+                new System.Windows.Data.Binding(nameof(ActualHeight))
+                {
+                    Source = KeyBreakdownSection,
+                    Mode = System.Windows.Data.BindingMode.OneWay
+                });
+        }
+
         if (_isWindowMode)
         {
             PopupSectionsGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
