@@ -138,7 +138,7 @@ try {
 
     $BinDir = Join-Path $ProjectDir "bin\$Configuration\net48"
     if (Test-Path $BinDir) {
-        Copy-Item -Path "$BinDir\*" -Destination $OutputDir -Recurse -Force
+        Get-ChildItem -Path $BinDir -Force | Where-Object { $_.Name -ne "win-x86" } | Copy-Item -Destination $OutputDir -Recurse -Force
     }
 
     Write-Host "Build succeeded!" -ForegroundColor Green
