@@ -35,6 +35,19 @@ public partial class KeyboardHeatmapWindow : Window
     public KeyboardHeatmapWindow()
     {
         InitializeComponent();
+        var settings = StatsManager.Instance.Settings;
+        if (settings.KeyboardHeatmapWindowWidth is double width &&
+            width > 0 && !double.IsNaN(width) && !double.IsInfinity(width))
+        {
+            Width = Math.Max(MinWidth, width);
+        }
+
+        if (settings.KeyboardHeatmapWindowHeight is double height &&
+            height > 0 && !double.IsNaN(height) && !double.IsInfinity(height))
+        {
+            Height = Math.Max(MinHeight, height);
+        }
+
         ApplyLocalizedText();
         RefreshData();
         UpdateAppearance();
@@ -42,6 +55,7 @@ public partial class KeyboardHeatmapWindow : Window
         Loaded += OnLoaded;
         Activated += OnActivated;
         Closed += OnClosed;
+        SizeChanged += OnSizeChanged;
         StatsManager.Instance.StatsUpdateRequested += OnStatsUpdateRequested;
         ThemeManager.Instance.ThemeChanged += OnThemeChanged;
         _isReady = true;
@@ -56,8 +70,30 @@ public partial class KeyboardHeatmapWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        SaveWindowSize();
         StatsManager.Instance.StatsUpdateRequested -= OnStatsUpdateRequested;
         ThemeManager.Instance.ThemeChanged -= OnThemeChanged;
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (IsLoaded && WindowState == WindowState.Normal)
+        {
+            SaveWindowSize();
+        }
+    }
+
+    private void SaveWindowSize()
+    {
+        if (WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        var settings = StatsManager.Instance.Settings;
+        settings.KeyboardHeatmapWindowWidth = Width;
+        settings.KeyboardHeatmapWindowHeight = Height;
+        StatsManager.Instance.SaveSettings();
     }
 
     private void OnActivated(object? sender, EventArgs e)

@@ -125,6 +125,7 @@ public sealed class ThemeManager : IDisposable
         SetBrush(res, "MenuItemHoverBrush", "#0A000000");
         SetBrush(res, "ChartAreaBrush", "#15808080");
         SetBrush(res, "SegmentedSelectedBrush", "#FFFFFF");
+        SetBrush(res, "HeatmapSegmentedSelectedBrush", "#DCEEFF");
     }
 
     private static void ApplyDarkTheme(ResourceDictionary res)
@@ -175,6 +176,7 @@ public sealed class ThemeManager : IDisposable
         SetBrush(res, "MenuItemHoverBrush", "#15FFFFFF");
         SetBrush(res, "ChartAreaBrush", "#20808080");
         SetBrush(res, "SegmentedSelectedBrush", "#3D3D3D");
+        SetBrush(res, "HeatmapSegmentedSelectedBrush", "#23496A");
     }
 
     private static void SetColor(ResourceDictionary res, string key, string hex)

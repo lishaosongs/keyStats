@@ -47,6 +47,7 @@
             <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource DividerColor}"/>
             <SolidColorBrush x:Key="SubtleFillBrush" Color="{StaticResource SubtleFillColor}"/>
             <SolidColorBrush x:Key="SubtleHoverBrush" Color="{StaticResource SubtleHoverColor}"/>
+            <SolidColorBrush x:Key="HeatmapSegmentedSelectedBrush" Color="#DCEEFF"/>
             <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
             <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
             <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
