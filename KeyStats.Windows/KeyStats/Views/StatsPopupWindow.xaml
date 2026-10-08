@@ -15,6 +15,31 @@
         ResizeMode="NoResize"
         Deactivated="Window_Deactivated"
         Opacity="0">
+    <Window.Resources>
+        <Style x:Key="HistorySegmentedButton" TargetType="RadioButton" BasedOn="{StaticResource SegmentedButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource SubtleHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource HeatmapSegmentedSelectedBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Window.RenderTransform>
         <TranslateTransform x:Name="WindowTransform"/>
     </Window.RenderTransform>
@@ -386,7 +411,7 @@
                 <Border Grid.Column="2" Background="{DynamicResource SubtleFillBrush}" CornerRadius="4" Padding="2">
                     <StackPanel Orientation="Horizontal">
                         <RadioButton GroupName="ChartStyle"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="10" Padding="6,3"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="10" Padding="6,3"
                                      IsChecked="{Binding SelectedChartStyleIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="9" VerticalAlignment="Center"/>
@@ -394,7 +419,7 @@
                             </StackPanel>
                         </RadioButton>
                         <RadioButton GroupName="ChartStyle"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="10" Padding="6,3"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="10" Padding="6,3"
                                      IsChecked="{Binding SelectedChartStyleIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=1}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="9" VerticalAlignment="Center"/>
@@ -417,16 +442,16 @@
                 <Border Grid.Column="0" Background="{DynamicResource SubtleFillBrush}" CornerRadius="5" Padding="3">
                     <StackPanel Orientation="Horizontal">
                         <RadioButton Content="{x:Static p:Strings.Range_3Days}" GroupName="Range"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}"/>
                         <RadioButton Content="{x:Static p:Strings.Range_7Days}" GroupName="Range"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=1}"/>
                         <RadioButton Content="{x:Static p:Strings.Range_30Days}" GroupName="Range"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=2}"/>
                         <RadioButton Content="{x:Static p:Strings.History_Range_All}" GroupName="Range"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedRangeIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=3}"/>
                     </StackPanel>
                 </Border>
@@ -441,16 +466,16 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <RadioButton Grid.Column="0" Content="{x:Static p:Strings.Metric_Clicks}" GroupName="Metric"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedMetricIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}"/>
                         <RadioButton Grid.Column="1" Content="{x:Static p:Strings.Metric_Keys}" GroupName="Metric"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedMetricIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=1}"/>
                         <RadioButton Grid.Column="2" Content="{x:Static p:Strings.Metric_Move}" GroupName="Metric"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedMetricIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=2}"/>
                         <RadioButton Grid.Column="3" Content="{x:Static p:Strings.Metric_Scroll}" GroupName="Metric"
-                                     Style="{DynamicResource SegmentedButton}" FontSize="11" Padding="6,4"
+                                     Style="{DynamicResource HistorySegmentedButton}" FontSize="11" Padding="6,4"
                                      IsChecked="{Binding SelectedMetricIndex, Converter={StaticResource IntToBoolConverter}, ConverterParameter=3}"/>
                     </Grid>
                 </Border>
