@@ -152,10 +152,10 @@
   <data name="Range_7Days" xml:space="preserve"><value>7天</value></data>
   <data name="Range_3Days" xml:space="preserve"><value>3天</value></data>
   <data name="Range_30Days" xml:space="preserve"><value>30天</value></data>
-  <data name="Metric_Clicks" xml:space="preserve"><value>点击</value></data>
-  <data name="Metric_Keys" xml:space="preserve"><value>按键</value></data>
-  <data name="Metric_Move" xml:space="preserve"><value>移动</value></data>
-  <data name="Metric_Scroll" xml:space="preserve"><value>滚动</value></data>
+  <data name="Metric_Clicks" xml:space="preserve"><value>鼠标点击</value></data>
+  <data name="Metric_Keys" xml:space="preserve"><value>键盘按键</value></data>
+  <data name="Metric_Move" xml:space="preserve"><value>鼠标移动</value></data>
+  <data name="Metric_Scroll" xml:space="preserve"><value>鼠标滚动</value></data>
   <data name="Stats_PeakKpsTooltipLabel" xml:space="preserve"><value>峰值按键速度(KPS)</value></data>
   <data name="Stats_PeakCpsTooltipLabel" xml:space="preserve"><value>峰值点击速度(CPS)</value></data>
 
