@@ -540,11 +540,11 @@ public partial class StatsPopupWindow : Window
         System.Windows.Controls.Grid.SetColumn(KeyBreakdownSection, 1);
         System.Windows.Controls.Grid.SetRow(ActiveAppsSection, 0);
         System.Windows.Controls.Grid.SetColumn(ActiveAppsSection, 2);
-        System.Windows.Controls.Grid.SetRow(HistorySection, 1);
-        System.Windows.Controls.Grid.SetColumn(HistorySection, 0);
-        System.Windows.Controls.Grid.SetColumnSpan(HistorySection, 2);
         System.Windows.Controls.Grid.SetRow(MouseTotalsSection, 1);
-        System.Windows.Controls.Grid.SetColumn(MouseTotalsSection, 2);
+        System.Windows.Controls.Grid.SetColumn(MouseTotalsSection, 0);
+        System.Windows.Controls.Grid.SetRow(HistorySection, 1);
+        System.Windows.Controls.Grid.SetColumn(HistorySection, 1);
+        System.Windows.Controls.Grid.SetColumnSpan(HistorySection, 2);
 
         foreach (var section in sections)
         {
