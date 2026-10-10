@@ -50,6 +50,9 @@ public class AppSettings
     [JsonPropertyName("mouseDistanceUnit")]
     public string MouseDistanceUnit { get; set; } = "auto"; // auto | px
 
+    [JsonPropertyName("mouseScrollPpi")]
+    public int MouseScrollPpi { get; set; } = 92;
+
     [JsonPropertyName("keyHistorySelectedRangeIndex")]
     public int KeyHistorySelectedRangeIndex { get; set; } = 1;
 

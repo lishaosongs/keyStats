@@ -329,6 +329,12 @@ public partial class SettingsWindow : Window
         App.CurrentApp?.ShowMouseCalibration();
     }
 
+    private void MouseScrollCalibration_Click(object sender, RoutedEventArgs e)
+    {
+        App.CurrentApp?.TrackClick("open_mouse_scroll_calibration");
+        new MouseScrollCalibrationWindow { Owner = this }.ShowDialog();
+    }
+
     private void OpenGitHub_Click(object sender, RoutedEventArgs e)
     {
         try

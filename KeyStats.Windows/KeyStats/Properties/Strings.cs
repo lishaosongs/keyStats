@@ -68,6 +68,8 @@ public static class Strings
     public static string Settings_NotificationsDesc => Get(nameof(Settings_NotificationsDesc));
     public static string Settings_DistanceCalibration => Get(nameof(Settings_DistanceCalibration));
     public static string Settings_DistanceCalibrationDesc => Get(nameof(Settings_DistanceCalibrationDesc));
+    public static string Settings_MouseScrollCalibration => Get(nameof(Settings_MouseScrollCalibration));
+    public static string Settings_MouseScrollCalibrationDesc => Get(nameof(Settings_MouseScrollCalibrationDesc));
     public static string Settings_VersionFormat => Get(nameof(Settings_VersionFormat));
     public static string Settings_OpenGitHubFailedMessage => Get(nameof(Settings_OpenGitHubFailedMessage));
     public static string Settings_Sync => Get(nameof(Settings_Sync));
@@ -254,6 +256,17 @@ public static class Strings
     public static string Calibration_ScaleLabelEmpty => Get(nameof(Calibration_ScaleLabelEmpty));
     public static string Calibration_ScaleLabelFormat => Get(nameof(Calibration_ScaleLabelFormat));
     public static string Calibration_TipFooter => Get(nameof(Calibration_TipFooter));
+
+    public static string ScrollCalibration_WindowTitle => Get(nameof(ScrollCalibration_WindowTitle));
+    public static string ScrollCalibration_HeaderTitle => Get(nameof(ScrollCalibration_HeaderTitle));
+    public static string ScrollCalibration_Instruction => Get(nameof(ScrollCalibration_Instruction));
+    public static string ScrollCalibration_WidthLabel => Get(nameof(ScrollCalibration_WidthLabel));
+    public static string ScrollCalibration_HeightLabel => Get(nameof(ScrollCalibration_HeightLabel));
+    public static string ScrollCalibration_DiagonalLabel => Get(nameof(ScrollCalibration_DiagonalLabel));
+    public static string ScrollCalibration_CurrentPpiFormat => Get(nameof(ScrollCalibration_CurrentPpiFormat));
+    public static string ScrollCalibration_ResultEmpty => Get(nameof(ScrollCalibration_ResultEmpty));
+    public static string ScrollCalibration_ResultFormat => Get(nameof(ScrollCalibration_ResultFormat));
+    public static string ScrollCalibration_Save => Get(nameof(ScrollCalibration_Save));
 
     public static string NotifSettings_WindowTitle => Get(nameof(NotifSettings_WindowTitle));
     public static string NotifSettings_HeaderTitle => Get(nameof(NotifSettings_HeaderTitle));

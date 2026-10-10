@@ -122,6 +122,8 @@
   <data name="Settings_NotificationsDesc" xml:space="preserve"><value>設定按鍵/點擊門檻通知</value></data>
   <data name="Settings_DistanceCalibration" xml:space="preserve"><value>距離校準</value></data>
   <data name="Settings_DistanceCalibrationDesc" xml:space="preserve"><value>校準滑鼠移動距離係數</value></data>
+  <data name="Settings_MouseScrollCalibration" xml:space="preserve"><value>滑鼠捲動計算校準</value></data>
+  <data name="Settings_MouseScrollCalibrationDesc" xml:space="preserve"><value>根據螢幕解析度和尺寸計算 PPI</value></data>
   <data name="Settings_VersionFormat" xml:space="preserve"><value>目前版本 {0}</value></data>
   <data name="Settings_OpenGitHubFailedMessage" xml:space="preserve"><value>無法開啟 GitHub 頁面。</value></data>
 
@@ -228,6 +230,17 @@
   <data name="Calibration_ScaleLabelEmpty" xml:space="preserve"><value>換算係數：--</value></data>
   <data name="Calibration_ScaleLabelFormat" xml:space="preserve"><value>換算係數：{0:E4} m/px</value></data>
   <data name="Calibration_TipFooter" xml:space="preserve"><value>提示：若需要更準確，請關閉系統滑鼠加速並保持勻速移動。</value></data>
+
+  <data name="ScrollCalibration_WindowTitle" xml:space="preserve"><value>滑鼠捲動校準</value></data>
+  <data name="ScrollCalibration_HeaderTitle" xml:space="preserve"><value>滑鼠捲動計算校準</value></data>
+  <data name="ScrollCalibration_Instruction" xml:space="preserve"><value>輸入螢幕解析度和對角線尺寸，自動計算 PPI。</value></data>
+  <data name="ScrollCalibration_WidthLabel" xml:space="preserve"><value>解析度寬度</value></data>
+  <data name="ScrollCalibration_HeightLabel" xml:space="preserve"><value>解析度高度</value></data>
+  <data name="ScrollCalibration_DiagonalLabel" xml:space="preserve"><value>對角線尺寸（英吋）</value></data>
+  <data name="ScrollCalibration_CurrentPpiFormat" xml:space="preserve"><value>目前 PPI：{0}</value></data>
+  <data name="ScrollCalibration_ResultEmpty" xml:space="preserve"><value>請輸入有效數值以計算 PPI。</value></data>
+  <data name="ScrollCalibration_ResultFormat" xml:space="preserve"><value>計算結果：{0} PPI</value></data>
+  <data name="ScrollCalibration_Save" xml:space="preserve"><value>儲存</value></data>
 
   <!-- NotificationSettingsWindow -->
   <data name="NotifSettings_WindowTitle" xml:space="preserve"><value>通知設定 - KeyStats</value></data>

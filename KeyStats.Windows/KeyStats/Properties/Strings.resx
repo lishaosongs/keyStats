@@ -122,6 +122,8 @@
   <data name="Settings_NotificationsDesc" xml:space="preserve"><value>Configure key/click threshold notifications</value></data>
   <data name="Settings_DistanceCalibration" xml:space="preserve"><value>Distance Calibration</value></data>
   <data name="Settings_DistanceCalibrationDesc" xml:space="preserve"><value>Calibrate the mouse movement coefficient</value></data>
+  <data name="Settings_MouseScrollCalibration" xml:space="preserve"><value>Mouse Scroll Calculation Calibration</value></data>
+  <data name="Settings_MouseScrollCalibrationDesc" xml:space="preserve"><value>Calculate screen PPI from resolution and diagonal size</value></data>
   <data name="Settings_VersionFormat" xml:space="preserve"><value>Current version {0}</value></data>
   <data name="Settings_OpenGitHubFailedMessage" xml:space="preserve"><value>Could not open the GitHub page.</value></data>
 
@@ -228,6 +230,17 @@
   <data name="Calibration_ScaleLabelEmpty" xml:space="preserve"><value>Scale factor: --</value></data>
   <data name="Calibration_ScaleLabelFormat" xml:space="preserve"><value>Scale factor: {0:E4} m/px</value></data>
   <data name="Calibration_TipFooter" xml:space="preserve"><value>Tip: for better accuracy, disable system mouse acceleration and move at a steady speed.</value></data>
+
+  <data name="ScrollCalibration_WindowTitle" xml:space="preserve"><value>Mouse Scroll Calibration</value></data>
+  <data name="ScrollCalibration_HeaderTitle" xml:space="preserve"><value>Mouse Scroll Calibration</value></data>
+  <data name="ScrollCalibration_Instruction" xml:space="preserve"><value>Enter your screen resolution and diagonal size to calculate PPI.</value></data>
+  <data name="ScrollCalibration_WidthLabel" xml:space="preserve"><value>Resolution width</value></data>
+  <data name="ScrollCalibration_HeightLabel" xml:space="preserve"><value>Resolution height</value></data>
+  <data name="ScrollCalibration_DiagonalLabel" xml:space="preserve"><value>Diagonal size (inches)</value></data>
+  <data name="ScrollCalibration_CurrentPpiFormat" xml:space="preserve"><value>Current PPI: {0}</value></data>
+  <data name="ScrollCalibration_ResultEmpty" xml:space="preserve"><value>Enter valid values to calculate PPI.</value></data>
+  <data name="ScrollCalibration_ResultFormat" xml:space="preserve"><value>Calculated PPI: {0}</value></data>
+  <data name="ScrollCalibration_Save" xml:space="preserve"><value>Save</value></data>
 
   <!-- NotificationSettingsWindow -->
   <data name="NotifSettings_WindowTitle" xml:space="preserve"><value>Notification Settings - KeyStats</value></data>

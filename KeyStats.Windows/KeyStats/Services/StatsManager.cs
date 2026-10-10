@@ -2134,12 +2134,13 @@ public class StatsManager : IDisposable
 
     public string FormatCalibratedDistance(double distance)
     {
-        var meters = Math.Max(0, distance) * GetMetersPerPixel();
-        if (meters >= 1000)
-            return $"{meters / 1000:F2} km";
-        if (meters >= 1)
-            return $"{meters:F1} m";
-        return $"{meters * 100:F1} cm";
+        var ppi = Settings.MouseScrollPpi > 0 ? Settings.MouseScrollPpi : 92;
+        var centimeters = Math.Max(0, distance) / ppi * 2.54;
+        if (centimeters >= 100_000)
+            return $"{centimeters / 100_000:F2} km";
+        if (centimeters >= 100)
+            return $"{centimeters / 100:F1} m";
+        return $"{centimeters:F1} cm";
     }
 
     #endregion
@@ -2156,6 +2157,19 @@ public class StatsManager : IDisposable
         lock (_lock)
         {
             Settings.MouseMetersPerPixel = metersPerPixel;
+        }
+
+        SaveSettings();
+        NotifyStatsUpdate();
+    }
+
+    public void UpdateMouseScrollPpi(int ppi)
+    {
+        if (ppi <= 0) return;
+
+        lock (_lock)
+        {
+            Settings.MouseScrollPpi = ppi;
         }
 
         SaveSettings();
