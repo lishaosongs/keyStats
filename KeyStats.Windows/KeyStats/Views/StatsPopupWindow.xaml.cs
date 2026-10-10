@@ -107,9 +107,9 @@ public partial class StatsPopupWindow : Window
         var duration = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 170 : 0);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-        RootBorder.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
+        BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
         {
-            From = RootBorder.Opacity,
+            From = Opacity,
             To = 1,
             Duration = duration,
             EasingFunction = easing
@@ -232,14 +232,34 @@ public partial class StatsPopupWindow : Window
 
         _isHiding = true;
         _viewModel.SetActive(false);
-        _viewModel.IsPeakPopupOpen = false;
         RootBorder.IsHitTestVisible = false;
+
+        // IsOpen=false precedes HWND teardown; wait for Closed before fading the owner.
+        if (PresentationSource.FromVisual(PeakPopup.Child) != null)
+        {
+            _viewModel.IsPeakPopupOpen = false;
+            return;
+        }
+
+        StartSlideOutAnimation();
+    }
+
+    private void PeakPopup_Closed(object sender, EventArgs e)
+    {
+        if (_isHiding && !_allowClose)
+        {
+            StartSlideOutAnimation();
+        }
+    }
+
+    private void StartSlideOutAnimation()
+    {
         var offset = GetSlideOffset();
         var duration = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 110 : 0);
         var easing = new CubicEase { EasingMode = EasingMode.EaseIn };
         var opacityAnimation = new DoubleAnimation
         {
-            From = RootBorder.Opacity,
+            From = Opacity,
             To = 0,
             Duration = duration,
             EasingFunction = easing
@@ -253,7 +273,7 @@ public partial class StatsPopupWindow : Window
             }
         };
 
-        RootBorder.BeginAnimation(UIElement.OpacityProperty, opacityAnimation);
+        BeginAnimation(UIElement.OpacityProperty, opacityAnimation);
         WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, new DoubleAnimation
         {
             From = WindowTransform.X,
@@ -554,8 +574,8 @@ public partial class StatsPopupWindow : Window
         RootBorder.IsHitTestVisible = true;
         if (!IsVisible)
         {
-            RootBorder.BeginAnimation(UIElement.OpacityProperty, null);
-            RootBorder.Opacity = 0;
+            BeginAnimation(UIElement.OpacityProperty, null);
+            Opacity = 0;
             WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, null);
             WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
             var offset = GetSlideOffset();

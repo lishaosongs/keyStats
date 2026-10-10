@@ -93,7 +93,8 @@
                         </ControlTemplate>
                     </ToggleButton.Template>
                 </ToggleButton>
-                <Popup Grid.Column="2"
+                <Popup x:Name="PeakPopup" Grid.Column="2"
+                       Closed="PeakPopup_Closed"
                        IsOpen="{Binding IsPeakPopupOpen, Mode=TwoWay}"
                        StaysOpen="False"
                        AllowsTransparency="True"
