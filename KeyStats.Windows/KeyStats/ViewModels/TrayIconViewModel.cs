@@ -134,11 +134,10 @@ public class TrayIconViewModel : ViewModelBase
         Console.WriteLine("=== TogglePopup called ===");
         try
         {
-            if (_trayPopupWindow != null && _trayPopupWindow.IsVisible)
+            if (_trayPopupWindow != null && _trayPopupWindow.IsVisible && !_trayPopupWindow.IsHiding)
             {
-                Console.WriteLine("Closing existing window");
-                _trayPopupWindow.CloseWindow(force: true);
-                _trayPopupWindow = null;
+                Console.WriteLine("Hiding existing window");
+                _trayPopupWindow.CloseWindow(force: false);
             }
             else
             {
@@ -169,18 +168,7 @@ public class TrayIconViewModel : ViewModelBase
             Console.WriteLine("ShowPopup called...");
             if (_trayPopupWindow != null)
             {
-                if (!_trayPopupWindow.IsVisible)
-                {
-                    _trayPopupWindow.ShowWindow(anchorPoint);
-                    return;
-                }
-
-                if (_trayPopupWindow.WindowState == WindowState.Minimized)
-                {
-                    _trayPopupWindow.WindowState = WindowState.Normal;
-                }
-
-                _trayPopupWindow.Activate();
+                _trayPopupWindow.ShowWindow(anchorPoint);
                 return;
             }
 

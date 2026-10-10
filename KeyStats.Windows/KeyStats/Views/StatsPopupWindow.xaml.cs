@@ -28,8 +28,11 @@ public partial class StatsPopupWindow : Window
     private bool _allowClose;
     private bool _suppressStatePersistence;
     private bool _isTrayBackdropEnabled;
+    private bool _isHiding;
     private System.Drawing.Point? _anchorPoint;
     private readonly DispatcherTimer _windowStateSaveTimer;
+
+    public bool IsHiding => _isHiding;
 
     public StatsPopupWindow(DisplayMode displayMode, System.Drawing.Point? anchorPoint = null)
     {
@@ -47,6 +50,10 @@ public partial class StatsPopupWindow : Window
         _windowStateSaveTimer.Tick += WindowStateSaveTimer_Tick;
 
         ConfigureWindowForMode();
+        if (!_isWindowMode)
+        {
+            _viewModel.SetActive(false);
+        }
         Loaded += OnLoaded;
         Closed += OnClosed;
         Closing += OnClosing;
@@ -72,113 +79,61 @@ public partial class StatsPopupWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        Console.WriteLine("Window loaded, positioning...");
         if (_isWindowMode)
         {
             RestoreWindowModeBounds();
-            Opacity = 1;
+            App.CurrentApp?.TrackPageView("stats_popup");
         }
-        else
-        {
-            PositionNearTray();
-        }
-        
-        // Track page view
-        App.CurrentApp?.TrackPageView("stats_popup");
 
-        if (!_isWindowMode)
-        {
-            // Determine animation direction (slide in from taskbar side)
-            var mousePos = System.Windows.Forms.Control.MousePosition;
-            var screen = Screen.FromPoint(new System.Drawing.Point(mousePos.X, mousePos.Y)) ?? Screen.PrimaryScreen;
-            if (screen != null)
-            {
-                var workingArea = screen.WorkingArea;
-                var screenBounds = screen.Bounds;
-                bool taskbarAtBottom = workingArea.Bottom < screenBounds.Bottom;
-                bool taskbarAtTop = workingArea.Top > screenBounds.Top;
-                bool taskbarAtRight = workingArea.Right < screenBounds.Right;
-                bool taskbarAtLeft = workingArea.Left > screenBounds.Left;
-
-                double slideDistance = 30;
-                double translateY = 0;
-                double translateX = 0;
-
-                if (taskbarAtBottom)
-                {
-                    translateY = slideDistance;
-                }
-                else if (taskbarAtTop)
-                {
-                    translateY = -slideDistance;
-                }
-                else if (taskbarAtRight)
-                {
-                    translateX = slideDistance;
-                }
-                else if (taskbarAtLeft)
-                {
-                    translateX = -slideDistance;
-                }
-                else
-                {
-                    translateY = slideDistance;
-                }
-
-                var transform = (System.Windows.Media.TranslateTransform)FindName("WindowTransform");
-                if (transform != null)
-                {
-                    transform.X = translateX;
-                    transform.Y = translateY;
-                }
-
-                SlideIn(translateX, translateY);
-            }
-        }
-        
         _isFullyLoaded = true;
-        Console.WriteLine($"Window positioned at {Left}, {Top}");
-        Activate();
     }
-    
-    private void SlideIn(double startX, double startY)
-    {
-        var transform = (System.Windows.Media.TranslateTransform)FindName("WindowTransform");
-        if (transform == null) return;
-        
-        // Fade-in animation
-        var opacityAnimation = new DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = TimeSpan.FromMilliseconds(200),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
 
-        // Slide-in animation
-        var translateXAnimation = new DoubleAnimation
+    private System.Windows.Vector GetSlideOffset()
+    {
+        var screen = Screen.FromPoint(_anchorPoint ?? System.Windows.Forms.Control.MousePosition);
+        var workingArea = screen.WorkingArea;
+        var bounds = screen.Bounds;
+        const double distance = 10;
+
+        if (workingArea.Top > bounds.Top) return new System.Windows.Vector(0, -distance);
+        if (workingArea.Right < bounds.Right) return new System.Windows.Vector(distance, 0);
+        if (workingArea.Left > bounds.Left) return new System.Windows.Vector(-distance, 0);
+        return new System.Windows.Vector(0, distance);
+    }
+
+    private void SlideIn()
+    {
+        _isHiding = false;
+        var duration = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 170 : 0);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        RootBorder.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation
         {
-            From = startX,
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(200),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        
-        var translateYAnimation = new DoubleAnimation
+            From = RootBorder.Opacity,
+            To = 1,
+            Duration = duration,
+            EasingFunction = easing
+        });
+        WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, new DoubleAnimation
         {
-            From = startY,
+            From = WindowTransform.X,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(200),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-        
-        BeginAnimation(UIElement.OpacityProperty, opacityAnimation);
-        transform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, translateXAnimation);
-        transform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, translateYAnimation);
+            Duration = duration,
+            EasingFunction = easing
+        });
+        WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new DoubleAnimation
+        {
+            From = WindowTransform.Y,
+            To = 0,
+            Duration = duration,
+            EasingFunction = easing
+        });
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _allowClose = true;
+        _isHiding = false;
         _windowStateSaveTimer.Stop();
 
         ThemeManager.Instance.ThemeChanged -= OnThemeChanged;
@@ -270,92 +225,49 @@ public partial class StatsPopupWindow : Window
     
     private void SlideOut()
     {
-        if (_isWindowMode)
+        if (_isWindowMode || !IsVisible || _isHiding || _allowClose)
         {
-            CloseWindow(force: true);
             return;
         }
 
-        var transform = (System.Windows.Media.TranslateTransform)FindName("WindowTransform");
-        if (transform == null)
-        {
-            Close();
-            return;
-        }
-        
-        // Determine slide-out direction (toward taskbar side)
-        var mousePos = System.Windows.Forms.Control.MousePosition;
-        var screen = Screen.FromPoint(new System.Drawing.Point(mousePos.X, mousePos.Y)) ?? Screen.PrimaryScreen;
-        if (screen == null)
-        {
-            Close();
-            return;
-        }
-        
-        var workingArea = screen.WorkingArea;
-        var screenBounds = screen.Bounds;
-        bool taskbarAtBottom = workingArea.Bottom < screenBounds.Bottom;
-        bool taskbarAtTop = workingArea.Top > screenBounds.Top;
-        bool taskbarAtRight = workingArea.Right < screenBounds.Right;
-        bool taskbarAtLeft = workingArea.Left > screenBounds.Left;
-        
-        double slideDistance = 30;
-        double endX = 0;
-        double endY = 0;
-        
-        if (taskbarAtBottom)
-        {
-            endY = slideDistance; // slide down
-        }
-        else if (taskbarAtTop)
-        {
-            endY = -slideDistance; // slide up
-        }
-        else if (taskbarAtRight)
-        {
-            endX = slideDistance; // slide right
-        }
-        else if (taskbarAtLeft)
-        {
-            endX = -slideDistance; // slide left
-        }
-        else
-        {
-            endY = slideDistance; // default: slide down
-        }
-
-        // Fade-out animation
+        _isHiding = true;
+        _viewModel.SetActive(false);
+        _viewModel.IsPeakPopupOpen = false;
+        RootBorder.IsHitTestVisible = false;
+        var offset = GetSlideOffset();
+        var duration = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 110 : 0);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseIn };
         var opacityAnimation = new DoubleAnimation
         {
-            From = Opacity,
+            From = RootBorder.Opacity,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(150),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            Duration = duration,
+            EasingFunction = easing
         };
-        
-        // Slide-out animation
-        var translateXAnimation = new DoubleAnimation
+        opacityAnimation.Completed += (_, _) =>
         {
-            From = transform.X,
-            To = endX,
-            Duration = TimeSpan.FromMilliseconds(150),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            if (_isHiding && !_allowClose)
+            {
+                Hide();
+                _isHiding = false;
+            }
         };
-        
-        var translateYAnimation = new DoubleAnimation
+
+        RootBorder.BeginAnimation(UIElement.OpacityProperty, opacityAnimation);
+        WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, new DoubleAnimation
         {
-            From = transform.Y,
-            To = endY,
-            Duration = TimeSpan.FromMilliseconds(150),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-        };
-        
-        // Close the window after the animation completes
-        opacityAnimation.Completed += (s, e) => Close();
-        
-        BeginAnimation(UIElement.OpacityProperty, opacityAnimation);
-        transform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, translateXAnimation);
-        transform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, translateYAnimation);
+            From = WindowTransform.X,
+            To = offset.X,
+            Duration = duration,
+            EasingFunction = easing
+        });
+        WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, new DoubleAnimation
+        {
+            From = WindowTransform.Y,
+            To = offset.Y,
+            Duration = duration,
+            EasingFunction = easing
+        });
     }
 
     private void PositionNearTray()
@@ -389,20 +301,12 @@ public partial class StatsPopupWindow : Window
         const int spacing = 10; // Minimum gap between window and mouse/taskbar
 
         Width = Math.Min(TrayPopupWidth, Math.Max(1, (workingArea.Width - spacing * 2) / dpiScaleX));
+        MaxHeight = Math.Max(200, (workingArea.Height - spacing * 2) / dpiScaleY);
+        RootBorder.Measure(new System.Windows.Size(Width, MaxHeight));
         UpdateLayout();
 
-        // Prevent window from exceeding working area at high DPI: clamp window by current screen's available height first, then read actual size for positioning
-        var maxHeightDip = Math.Max(200, (workingArea.Height - spacing * 2) / dpiScaleY);
-        if (Math.Abs(MaxHeight - maxHeightDip) > 0.5)
-        {
-            MaxHeight = maxHeightDip;
-            UpdateLayout();
-        }
-
-        var windowWidthDip = ActualWidth > 0 ? ActualWidth : Width;
-        var windowHeightDip = ActualHeight > 0 ? ActualHeight : Height;
-        if (double.IsNaN(windowWidthDip) || windowWidthDip <= 0) windowWidthDip = 360;
-        if (double.IsNaN(windowHeightDip) || windowHeightDip <= 0) windowHeightDip = 600;
+        var windowWidthDip = Width;
+        var windowHeightDip = Math.Min(RootBorder.DesiredSize.Height, MaxHeight);
 
         var windowWidth = windowWidthDip * dpiScaleX;
         var windowHeight = windowHeightDip * dpiScaleY;
@@ -590,14 +494,21 @@ public partial class StatsPopupWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (!_isWindowMode || _allowClose)
+        if (_allowClose)
         {
             return;
         }
 
-        PersistWindowModeBounds();
         e.Cancel = true;
-        Hide();
+        if (_isWindowMode)
+        {
+            PersistWindowModeBounds();
+            Hide();
+        }
+        else
+        {
+            SlideOut();
+        }
     }
 
     private void OnWindowBoundsChanged(object? sender, EventArgs e)
@@ -624,29 +535,40 @@ public partial class StatsPopupWindow : Window
 
     public void ShowWindow(System.Drawing.Point? anchorPoint = null)
     {
-        if (anchorPoint.HasValue)
+        if (_isWindowMode)
         {
-            _anchorPoint = anchorPoint;
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+            return;
         }
 
+        if (IsVisible && !_isHiding)
+        {
+            Activate();
+            return;
+        }
+
+        _anchorPoint = anchorPoint ?? System.Windows.Forms.Control.MousePosition;
+        _viewModel.SetActive(true);
+        RootBorder.IsHitTestVisible = true;
         if (!IsVisible)
         {
+            RootBorder.BeginAnimation(UIElement.OpacityProperty, null);
+            RootBorder.Opacity = 0;
+            WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, null);
+            WindowTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
+            var offset = GetSlideOffset();
+            WindowTransform.X = offset.X;
+            WindowTransform.Y = offset.Y;
+            new System.Windows.Interop.WindowInteropHelper(this).EnsureHandle();
+            PositionNearTray();
             Show();
         }
 
-        if (_isWindowMode)
-        {
-            if (WindowState == WindowState.Minimized)
-            {
-                WindowState = WindowState.Normal;
-            }
-        }
-        else if (_isFullyLoaded)
-        {
-            PositionNearTray();
-        }
-
+        SlideIn();
         Activate();
+        App.CurrentApp?.TrackPageView("stats_popup");
     }
 
     public void CloseWindow(bool force)

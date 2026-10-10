@@ -13,8 +13,7 @@
         ShowInTaskbar="False"
         Topmost="True"
         ResizeMode="NoResize"
-        Deactivated="Window_Deactivated"
-        Opacity="0">
+        Deactivated="Window_Deactivated">
     <Window.Resources>
         <Style x:Key="HistorySegmentedButton" TargetType="RadioButton" BasedOn="{StaticResource SegmentedButton}">
             <Setter Property="Template">
@@ -40,10 +39,6 @@
         </Style>
     </Window.Resources>
 
-    <Window.RenderTransform>
-        <TranslateTransform x:Name="WindowTransform"/>
-    </Window.RenderTransform>
-
     <Window.DataContext>
         <viewmodels:StatsPopupViewModel/>
     </Window.DataContext>
@@ -52,6 +47,9 @@
             Background="{DynamicResource SurfaceBrush}"
             BorderThickness="0"
             CornerRadius="8">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="WindowTransform"/>
+        </Border.RenderTransform>
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       CanContentScroll="False">

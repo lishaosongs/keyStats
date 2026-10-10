@@ -35,6 +35,8 @@ public class ChartDataPoint
 
 public class StatsPopupViewModel : ViewModelBase
 {
+    private bool _isActive = true;
+    private bool _needsRefresh;
     private string _keyPresses = "0";
     private string _totalClicks = "0";
     private string _leftClicks = "0";
@@ -310,6 +312,12 @@ public class StatsPopupViewModel : ViewModelBase
     {
         Application.Current?.Dispatcher.Invoke(() =>
         {
+            if (!_isActive)
+            {
+                _needsRefresh = true;
+                return;
+            }
+
             if (updateKind == StatsManager.StatsUpdateKind.MouseDistanceOnly)
             {
                 UpdateStats();
@@ -319,6 +327,16 @@ public class StatsPopupViewModel : ViewModelBase
 
             RefreshAllSections();
         });
+    }
+
+    public void SetActive(bool active)
+    {
+        _isActive = active;
+        if (active && _needsRefresh)
+        {
+            RefreshAllSections();
+            _needsRefresh = false;
+        }
     }
 
     private void RefreshAllSections()
