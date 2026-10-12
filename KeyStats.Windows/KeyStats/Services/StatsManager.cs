@@ -1336,6 +1336,25 @@ public class StatsManager : IDisposable
         }
     }
 
+    public (double PeakKPS, double PeakCPS) GetAllTimePeakRates()
+    {
+        lock (_lock)
+        {
+            var peakKPS = CurrentStats.PeakKPS;
+            var peakCPS = CurrentStats.PeakCPS;
+            var today = DateTime.Today;
+
+            foreach (var stats in History.Values)
+            {
+                if (stats.Date.Date > today) continue;
+                peakKPS = Math.Max(peakKPS, stats.PeakKPS);
+                peakCPS = Math.Max(peakCPS, stats.PeakCPS);
+            }
+
+            return (peakKPS, peakCPS);
+        }
+    }
+
     public List<(string Key, int Count)> GetKeyPressBreakdownSorted()
     {
         lock (_lock)

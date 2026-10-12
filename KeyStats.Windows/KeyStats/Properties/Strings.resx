@@ -160,6 +160,7 @@
   <data name="Metric_Scroll" xml:space="preserve"><value>Mouse scrolling</value></data>
   <data name="Stats_PeakKpsTooltipLabel" xml:space="preserve"><value>Peak Keys/sec (KPS)</value></data>
   <data name="Stats_PeakCpsTooltipLabel" xml:space="preserve"><value>Peak Clicks/sec (CPS)</value></data>
+  <data name="Stats_HistoricalPeakFormat" xml:space="preserve"><value>{0} (all-time high: {1})</value></data>
 
   <data name="AppStats_WindowTitle" xml:space="preserve"><value>App Stats</value></data>
   <data name="AppStats_HeaderTitle" xml:space="preserve"><value>App Stats</value></data>

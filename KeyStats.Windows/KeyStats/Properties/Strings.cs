@@ -174,6 +174,7 @@ public static class Strings
     public static string Metric_Scroll => Get(nameof(Metric_Scroll));
     public static string Stats_PeakKpsTooltipLabel => Get(nameof(Stats_PeakKpsTooltipLabel));
     public static string Stats_PeakCpsTooltipLabel => Get(nameof(Stats_PeakCpsTooltipLabel));
+    public static string Stats_HistoricalPeakFormat => Get(nameof(Stats_HistoricalPeakFormat));
     public static string FloatingStats_WindowTitle => Get(nameof(FloatingStats_WindowTitle));
     public static string FloatingStats_Today => Get(nameof(FloatingStats_Today));
     public static string FloatingStats_PrimaryMetric => Get(nameof(FloatingStats_PrimaryMetric));

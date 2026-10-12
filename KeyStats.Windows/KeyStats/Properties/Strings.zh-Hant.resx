@@ -160,6 +160,7 @@
   <data name="Metric_Scroll" xml:space="preserve"><value>滑鼠滾動</value></data>
   <data name="Stats_PeakKpsTooltipLabel" xml:space="preserve"><value>峰值按鍵速度 (KPS)</value></data>
   <data name="Stats_PeakCpsTooltipLabel" xml:space="preserve"><value>峰值點擊速度 (CPS)</value></data>
+  <data name="Stats_HistoricalPeakFormat" xml:space="preserve"><value>{0} (歷史最高:{1})</value></data>
 
   <data name="AppStats_WindowTitle" xml:space="preserve"><value>依應用程式統計</value></data>
   <data name="AppStats_HeaderTitle" xml:space="preserve"><value>依應用程式統計</value></data>
