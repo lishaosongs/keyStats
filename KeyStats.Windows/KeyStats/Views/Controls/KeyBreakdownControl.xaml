@@ -14,7 +14,8 @@
         </Grid.ColumnDefinitions>
 
         <!-- Column 1 -->
-        <ItemsControl x:Name="Column1" Grid.Column="0">
+        <ItemsControl x:Name="Column1" Grid.Column="0"
+                      ItemsSource="{Binding Column1Items, RelativeSource={RelativeSource AncestorType=UserControl}}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type viewmodels:KeyCountItem}">
                     <Grid Height="22" Margin="0,1">
@@ -41,7 +42,8 @@
         </ItemsControl>
 
         <!-- Column 2 -->
-        <ItemsControl x:Name="Column2" Grid.Column="2">
+        <ItemsControl x:Name="Column2" Grid.Column="2"
+                      ItemsSource="{Binding Column2Items, RelativeSource={RelativeSource AncestorType=UserControl}}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type viewmodels:KeyCountItem}">
                     <Grid Height="22" Margin="0,1">
@@ -68,7 +70,8 @@
         </ItemsControl>
 
         <!-- Column 3 -->
-        <ItemsControl x:Name="Column3" Grid.Column="4">
+        <ItemsControl x:Name="Column3" Grid.Column="4"
+                      ItemsSource="{Binding Column3Items, RelativeSource={RelativeSource AncestorType=UserControl}}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type viewmodels:KeyCountItem}">
                     <Grid Height="22" Margin="0,1">
@@ -94,12 +97,27 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- Empty State -->
+        <!-- Empty State: 三列皆空时才显示，随 ItemsControl.HasItems 自动刷新 -->
         <TextBlock x:Name="EmptyText" Grid.ColumnSpan="5"
                    Text="{x:Static p:Strings.KeyBreakdown_Empty}"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    FontSize="12"
-                   Foreground="{DynamicResource TextSecondaryBrush}"
-                   Visibility="Collapsed"/>
+                   Foreground="{DynamicResource TextSecondaryBrush}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding HasItems, ElementName=Column1}" Value="False"/>
+                                <Condition Binding="{Binding HasItems, ElementName=Column2}" Value="False"/>
+                                <Condition Binding="{Binding HasItems, ElementName=Column3}" Value="False"/>
+                            </MultiDataTrigger.Conditions>
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </MultiDataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
     </Grid>
 </UserControl>

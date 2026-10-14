@@ -1,8 +1,5 @@
-using System;
 using System.Collections;
-using System.Linq;
 using System.Windows;
-using System.Windows.Controls;
 
 namespace KeyStats.Views.Controls;
 
@@ -10,15 +7,15 @@ public partial class KeyBreakdownControl : System.Windows.Controls.UserControl
 {
     public static readonly DependencyProperty Column1ItemsProperty =
         DependencyProperty.Register(nameof(Column1Items), typeof(IEnumerable), typeof(KeyBreakdownControl),
-            new PropertyMetadata(null, OnItemsChanged));
+            new PropertyMetadata(null));
 
     public static readonly DependencyProperty Column2ItemsProperty =
         DependencyProperty.Register(nameof(Column2Items), typeof(IEnumerable), typeof(KeyBreakdownControl),
-            new PropertyMetadata(null, OnItemsChanged));
+            new PropertyMetadata(null));
 
     public static readonly DependencyProperty Column3ItemsProperty =
         DependencyProperty.Register(nameof(Column3Items), typeof(IEnumerable), typeof(KeyBreakdownControl),
-            new PropertyMetadata(null, OnItemsChanged));
+            new PropertyMetadata(null));
 
     public IEnumerable? Column1Items
     {
@@ -41,26 +38,5 @@ public partial class KeyBreakdownControl : System.Windows.Controls.UserControl
     public KeyBreakdownControl()
     {
         InitializeComponent();
-    }
-
-    private static void OnItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        if (d is KeyBreakdownControl control)
-        {
-            control.UpdateItemsSources();
-        }
-    }
-
-    private void UpdateItemsSources()
-    {
-        Column1.ItemsSource = Column1Items;
-        Column2.ItemsSource = Column2Items;
-        Column3.ItemsSource = Column3Items;
-
-        var hasItems = (Column1Items?.Cast<object>().Any() ?? false) ||
-                       (Column2Items?.Cast<object>().Any() ?? false) ||
-                       (Column3Items?.Cast<object>().Any() ?? false);
-
-        EmptyText.Visibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
     }
 }
