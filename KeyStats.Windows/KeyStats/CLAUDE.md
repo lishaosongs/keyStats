@@ -267,19 +267,3 @@ InverseBoolConverter    // bool取反
 <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
 <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
 ```
-
-## 与macOS版本的对应关系
-
-| macOS | Windows |
-|-------|---------|
-| `InputMonitor.swift` | `InputMonitorService.cs` |
-| `StatsManager.swift` | `StatsManager.cs` |
-| `MenuBarController.swift` | `App.xaml.cs` + `TrayIconViewModel.cs` |
-| `StatsPopoverViewController.swift` | `StatsPopupWindow.xaml` + `StatsPopupViewModel.cs` |
-| `SettingsViewController.swift` | `SettingsWindow.xaml` + `SettingsViewModel.cs` |
-| `NotificationManager.swift` | `NotificationService.cs` |
-| `LaunchAtLoginManager.swift` | `StartupManager.cs` |
-| `UserDefaults` | JSON文件 (`%LOCALAPPDATA%\KeyStats\`) |
-| `CGEvent.tapCreate` | `SetWindowsHookEx` |
-| `NSStatusItem` | `Hardcodet.NotifyIcon.Wpf.TaskbarIcon` |
-| `NSPopover` | 无边框WPF窗口 |

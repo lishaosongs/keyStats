@@ -53,11 +53,7 @@ else
     exit 1
 fi
 
-if [[ "$(uname)" == "Darwin" ]]; then
-    SHA256=$(shasum -a 256 "${ZIP_PATH}" | cut -d ' ' -f 1)
-else
-    SHA256=$(sha256sum "${ZIP_PATH}" | cut -d ' ' -f 1)
-fi
+SHA256=$(sha256sum "${ZIP_PATH}" | cut -d ' ' -f 1)
 echo "    SHA256: ${SHA256}"
 
 if [[ -n "${TMP_DIR:-}" ]]; then

@@ -8,7 +8,6 @@ body:
     attributes:
       label: Affected Platform
       options:
-        - macOS
         - Windows
     validations:
       required: true

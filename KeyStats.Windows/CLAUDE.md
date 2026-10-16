@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KeyStats for Windows — a system tray app that tracks keyboard and mouse usage statistics. Ported from the macOS version. Built with WPF + WinForms interop on .NET Framework 4.8 (`net48`), C# with nullable enabled, LangVersion 10.0.
+KeyStats for Windows — a system tray app that tracks keyboard and mouse usage statistics. Built with WPF + WinForms interop on .NET Framework 4.8 (`net48`), C# with nullable enabled, LangVersion 10.0.
 
 ## Build Commands
 
@@ -15,11 +15,14 @@ dotnet build KeyStats/KeyStats.csproj -c Debug
 # Release build
 dotnet build KeyStats/KeyStats.csproj -c Release
 
+# Automated tests (sync protocol, crypto fixtures, scheduling, persistence)
+dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj
+
 # Package for distribution (produces dist/KeyStats-Windows-<version>.zip)
 powershell -ExecutionPolicy Bypass -File ./build.ps1 -Configuration Release
 ```
 
-There are no automated tests in this project. Validation is manual (see AGENTS.md for checklist).
+`KeyStats.Sync.Tests` covers the sync protocol, crypto fixtures, scheduling, batching, credential/cache state, and stats persistence. The UI itself is validated manually (see AGENTS.md for the checklist).
 
 ## Architecture
 

@@ -1,6 +1,6 @@
 # KeyStats for Windows
 
-一个轻量级的键盘和鼠标统计工具，适用于 Windows 系统。从 macOS 版本移植而来。
+一个轻量级的键盘和鼠标统计工具，适用于 Windows 系统。
 
 ## 功能特性
 
@@ -69,6 +69,14 @@ dotnet build -c Release
 ```
 
 输出文件位于 `bin/Release/net48/` 目录。
+
+### 运行测试
+
+```bash
+dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj
+```
+
+覆盖同步协议、加密向量、调度、批处理与统计数据持久化；UI 部分为手动验证。
 
 ### 打包发布
 
@@ -166,16 +174,6 @@ KeyStats.Windows/
 鼠标移动以 30 FPS 采样，避免过度占用 CPU。
 超过 500 像素的跳跃会被过滤（例如鼠标突然移动）。
 
-## 与 macOS 版本的差异
-
-| 方面 | macOS | Windows |
-|------|-------|---------|
-| 权限 | 需要辅助功能权限 | 无需特殊权限 |
-| 托盘显示 | 显示文本 + 图标 | 仅图标 |
-| 弹窗行为 | NSPopover 锚定到菜单栏 | 无边框窗口靠近托盘 |
-| 钩子机制 | CGEvent tap | SetWindowsHookEx |
-| 开机自启 | SMAppService | 注册表 Run 键 |
-
 ## 常见问题
 
 ### Q: 应用无法启动？
@@ -192,4 +190,4 @@ A: Windows 10 (1903+) 和 Windows 11。更早的版本需要手动安装 .NET Fr
 
 ## 许可证
 
-与 macOS KeyStats 应用使用相同的许可证。
+MIT License

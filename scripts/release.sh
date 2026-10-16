@@ -14,7 +14,6 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 TAG="v$VERSION"
-PBXPROJ="KeyStats.xcodeproj/project.pbxproj"
 WINDOWS_CSPROJ="KeyStats.Windows/KeyStats/KeyStats.csproj"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,19 +22,11 @@ cd "$PROJECT_DIR"
 
 echo "Release $TAG"
 
-current_build=$(perl -0ne 'if (/CURRENT_PROJECT_VERSION = ([0-9]+);\s*\n\s*DEVELOPMENT_TEAM = 228XJY7Z32;/) { print $1; exit }' "$PBXPROJ")
-if [[ -z "${current_build:-}" ]]; then
-    echo "Error: unable to read main-app CURRENT_PROJECT_VERSION from $PBXPROJ"
-    exit 1
-fi
-
-new_build=$((current_build + 1))
-perl -0pi -e "s/CURRENT_PROJECT_VERSION = [0-9]+;(\s*\n\s*DEVELOPMENT_TEAM = 228XJY7Z32;)/CURRENT_PROJECT_VERSION = ${new_build};\$1/g; s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${VERSION};/g" "$PBXPROJ"
 perl -0pi -e "s#<Version>[^<]+</Version>#<Version>${VERSION}</Version>#g" "$WINDOWS_CSPROJ"
-echo "Set MARKETING_VERSION=$VERSION, CURRENT_PROJECT_VERSION=$new_build, Windows Version=$VERSION"
+echo "Set Windows Version=$VERSION"
 
 echo "Committing version bump..."
-git add "$PBXPROJ" "$WINDOWS_CSPROJ"
+git add "$WINDOWS_CSPROJ"
 git commit -m "chore: bump version to $VERSION"
 
 echo "Tagging and pushing..."
@@ -45,4 +36,4 @@ git push origin "$TAG"
 
 echo ""
 echo "Release complete for $TAG"
-echo "GitHub Actions will build and publish artifacts, including Sparkle appcast."
+echo "GitHub Actions will build and publish the Windows package."

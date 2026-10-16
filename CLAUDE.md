@@ -2,87 +2,86 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build & Run
+## Project Overview
 
-- **Use Xcode** to build and run (`⌘R`). Do not use `xcodebuild` from command line.
-- **Tests:** `swift test` (runs model tests via SPM — see `Package.swift` for the `KeyStatsCore` test target)
-- **Distribution:** `./scripts/build_dmg.sh`
+KeyStats is a Windows system tray app (WPF + WinForms interop on .NET Framework 4.8, `net48`) that tracks keyboard and mouse input statistics — counts and distances only, never content. Optional multi-device sync is provided by an independently deployable Cloudflare Worker.
 
-## Architecture
+Repo layout:
 
-KeyStats is a **macOS menu bar app** (LSUIElement) that tracks keyboard/mouse input statistics — counts and distances only, never content.
+- `KeyStats.Windows/` — the Windows app, its solution, packaging scripts, and `KeyStats.Sync.Tests`.
+- `contracts/sync/v1/` — wire-level source of truth for E2EE sync (JSON Schema, OpenAPI, fixtures).
+- `services/sync-worker/` — the Cloudflare Worker backend (TypeScript, D1 + R2).
+- `scripts/` — build and release scripts.
+- `docs/` — design docs and implementation plans.
 
-**Data flow:**
+Detailed guidance:
+
+- App architecture, conventions, and constraints: `KeyStats.Windows/CLAUDE.md` and `KeyStats.Windows/AGENTS.md`.
+- Sync protocol rules: `contracts/sync/v1/README.md`.
+- Sync service operations and deployment: `services/sync-worker/README.md`.
+
+## Build & Test
+
+```bash
+cd KeyStats.Windows
+
+# Build
+dotnet build KeyStats/KeyStats.csproj -c Release
+
+# Automated tests (sync protocol, crypto fixtures, scheduling, persistence)
+dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj
+
+# Package (produces dist/KeyStats-Windows-<version>.zip)
+powershell -ExecutionPolicy Bypass -File ./build.ps1 -Configuration Release
 ```
-KeyStatsHelper (launchd agent)
-  └─ CGEventTap @ cgSessionEventTap
-       └─ XPC (com.keystats.app.helper)
-            └─ RemoteEventProcessor → StatsManager → MenuBarController (display)
-                                                   → UserDefaults (persistence, debounced 2s)
-                                                   → StatsPopoverViewController (detail panel)
+
+```bash
+# Sync worker
+cd services/sync-worker
+npm ci
+npm run check
 ```
 
-Helper 是独立 `.app` bundle（target 名 `helper`，产物 `KeyStatsHelper.app`、bundle id `com.keystats.app.helper`）。首次启动时主 app 把它从 `Contents/Resources/KeyStatsHelper.app` 拷到 `~/Library/Application Support/KeyStats/Helper/`，写入 `~/Library/LaunchAgents/com.keystats.app.helper.plist`，再通过 XPC 握手。cdhash 稳定跨主 app 升级 ⇒ TCC 授权保留。
+## Architecture (Windows app)
 
-**Core singletons:**
-- `HelperSupervisor.shared` — 安装 / 升级 Helper，注册 LaunchAgent。用 cdhash 判断是否重装。
-- `HelperXPCClient.shared` — 主 app 侧 XPC 客户端（握手、startMonitoring、state observer）。
-- `RemoteEventProcessor.shared` — 接收 helper 事件，还原键名（内嵌 `InputEventDecoder`），喂给 `StatsManager`。
-- `StatsManager.shared` — Aggregates daily stats, per-app stats, per-key counts, peak KPS/CPS (sliding window). Handles persistence, midnight auto-reset, and menu bar update callbacks.
-- `MenuBarController` — NSStatusItem with compact dual-line display (SwiftUI `MenuBarStatusSwiftUIView` hosted in `MenuBarStatusView`). Manages popover lifecycle and highlight state.
+**Entry point**: `KeyStats/App.xaml.cs` — single-instance mutex, theme init, service init, tray icon, context menu, windows, import/export. Exit sequence: analytics flush → monitor stop → stats flush → cleanup.
 
-**Data models** (`AppStats.swift`, `StatsModels.swift`):
-- `DailyStats` — per-day aggregate with history dictionary
-- `AppStats` — per-bundle-ID breakdown
-- Both are `Codable`, persisted as JSON in UserDefaults
+**Core singleton services** (`KeyStats/Services/`):
+- `InputMonitorService` — global `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hooks via `SetWindowsHookEx`.
+- `StatsManager` — aggregation, persistence, formatting, history queries, midnight rollover, import/export.
+- `NotificationService` — Windows toast notifications.
+- `StartupManager` — `HKCU\...\Run` registry entry.
 
-**Windows variant** lives in `KeyStats.Windows/` (C#/.NET, separate codebase).
+**UI**: light MVVM (View + ViewModel, no framework) in `KeyStats/Views/` and `KeyStats/ViewModels/`; custom controls in `KeyStats/Views/Controls/`. **Helpers** in `KeyStats/Helpers/` (`NativeInterop`, `KeyNameMapper`, `ThemeManager`, `ActiveWindowManager`, `Converters`). **Models** in `KeyStats/Models/` (`DailyStats`, `AppStats`, `AppSettings`).
 
 ## Critical Rules
 
 ### Privacy
-- NEVER log actual keystrokes, mouse positions, or user input content — only aggregate counts and distances
+- Only store aggregate counts/distances. NEVER persist keystroke content, raw mouse paths, or clipboard data.
+- Secrets, IDs, key names, and counts are never analytics properties or log fields.
 
 ### Thread Safety
-- Helper 的 CGEventTap 回调在 helper 进程主 run loop 执行；事件通过 XPC 跨进程进入主 app（回调线程为 XPC 队列）。`RemoteEventProcessor` 自己加 lock，UI 更新仍要 dispatch 回 main。
-- Three `NSLock`s protect concurrent access: `inputRateLock`, `statsStateLock`, `mouseDistanceCalibrationLock`
-- `HelperXPCClient.State` observer 可能在任意线程触发，订阅方（如 `StatsPopoverViewController`）自行切主队列。
+- Low-level hook callbacks run on the hook thread and must be non-blocking: always call `CallNextHookEx`, no file IO, serialization, or UI work — dispatch via the thread pool.
+- `StatsManager` shared state is lock-protected. UI updates must go through the WPF Dispatcher. Never mutate WPF-bound collections from background threads.
+- Timers fire on thread-pool threads; synchronize before touching shared state.
 
-### Dark Mode
-- `CALayer.backgroundColor`/`borderColor` use `CGColor` (static snapshot) — they don't auto-follow appearance changes
-- Always resolve dynamic colors under current `effectiveAppearance` using `resolvedCGColor(color, alpha:, for:)` helper
-- Re-assign layer colors on every theme change; never cache `CGColor` values
-- Prefer dynamic colors (`NSColor.labelColor`, `NSColor.controlBackgroundColor`) over hardcoded values
+### Persistence
+- JSON files in `%LOCALAPPDATA%\KeyStats\` — `daily_stats.json`, `history.json`, `settings.json`. Keep backward-compatible when adding fields (old settings files must still load).
+- Preserve the exit sequence in `App.OnExit`; new background/timer resources must be disposed on exit.
 
 ### UI Style
-- Soft glass-card surfaces: `controlBackgroundColor` with alpha ~0.6–0.85
-- Thin 0.5pt separators with low alpha, subtle shadows, 10–12pt corner radius for cards
-- When adding a new page/window/popover, add matching PostHog analytics: a `pageview` event and `click` events for key actions
+- Soft glass-card surfaces, thin separators, subtle shadows, 10–12pt card radius. Support runtime light/dark theme switching via `ThemeManager` dynamic resources.
+- User-facing copy is Chinese-first. When adding a new page/window, emit matching `pageview` and `click` analytics events.
 
-### Code Conventions
-- Localize user-facing strings with `NSLocalizedString()` (English + Simplified Chinese)
-- Use `[weak self]` in closures to prevent retain cycles
-- Maintain backward compatibility with existing UserDefaults keys when changing data models
+## Sync Service
 
-### Automatic Commits
-- After a feature/fix is fully implemented and its relevant checks pass (e.g. `swift test`), create an atomic commit **without waiting for the user to ask**
-- Re-check `git status` first; stage only files belonging to that feature — never unrelated existing changes, incomplete work, or failing changes
-- Conventional Commits style matching history: `fix(input): ...`, `feat(heatmap): ...`, `docs: ...`
-- Commit on the current branch only; never push, force-push, amend, or rewrite history automatically
-- Same policy as `AGENTS.md` → "Automatic Commit Policy"; keep the two in sync
+- Wire protocol: `contracts/sync/v1/README.md`. Backend operations and deployment: `services/sync-worker/README.md`.
+- Do not change the protocol schema, fixtures, or Windows sync behavior without a corresponding plan.
 
-### Vendored Helper
+## Automatic Commits
 
-`KeyStatsHelper.app` is **vendored** at `vendor/KeyStatsHelper.app/` (binary-tracked via `.gitattributes`). Both `scripts/build_dmg.sh` and `.github/workflows/release.yml` overwrite Xcode's freshly-built helper with this exact bundle (via `scripts/embed_vendored_helper.sh`) before `sign_app.sh` re-signs the outer app. Re-signing the helper with the unchanged `KeyStatsHelper.entitlements` is deterministic, so the shipped helper's cdhash equals `vendor/KeyStatsHelper.cdhash.txt` regardless of toolchain — TCC Accessibility grant survives Sparkle updates.
-
-**Dev builds (Xcode `⌘R`) use the freshly-built helper, not the vendored copy** (no Xcode build phase changes). That's intentional: dev iteration shouldn't require re-vendoring after every helper edit. Only `build_dmg.sh` and CI use the vendored bundle.
-
-**When you change anything under `KeyStatsHelper/` (sources, Info.plist, entitlements, build settings):**
-1. Run `./scripts/rebuild_vendored_helper.sh` (rebuilds + signs + writes new `vendor/KeyStatsHelper.app` and `cdhash.txt`).
-2. Commit `vendor/` together with the helper source change.
-3. CI's `Verify vendored helper` step + `build_dmg.sh`'s fail-fast check will reject the build if you forget — the actual cdhash of `vendor/KeyStatsHelper.app` won't match the committed `cdhash.txt`.
-
-## Dependencies (SPM)
-
-- **PostHog** (posthog-ios) — Analytics, initialized in AppDelegate
-- **Sparkle** — Auto-updates via GitHub releases appcast
+- After a feature or module is fully implemented and its relevant checks pass, create an atomic commit **without waiting for the user to ask**.
+- Re-check `git status` first; stage only files belonging to the completed feature or module.
+- Do not automatically commit incomplete work, failed verification, or unrelated existing changes.
+- Use Conventional Commits style: `feat: ...`, `fix: ...`, `docs: ...`.
+- Commit on the current branch only; never push, force-push, amend, or rewrite history automatically.

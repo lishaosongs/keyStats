@@ -10,7 +10,7 @@ This folder should contain the following icon files:
 
 ## Generating Icons
 
-You can use the macOS KeyStats app icon as a source and convert it using tools like:
+Create a multi-resolution `.ico` from a source PNG using tools like:
 - ImageMagick: `convert AppIcon.png -resize 256x256 app.ico`
 - Online tools: icoconvert.com or similar
 

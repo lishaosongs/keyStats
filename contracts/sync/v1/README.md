@@ -1,9 +1,13 @@
 # KeyStats synchronization protocol v1
 
-This directory is the wire-level source of truth shared by the macOS client,
-Windows client, and Cloudflare Worker. The service receives only the encrypted
+This directory is the wire-level source of truth shared by the Windows client
+and the Cloudflare Worker. The service receives only the encrypted
 record shape; `CoreDaySnapshotV1` is serialized, validated, encrypted, and
 decrypted exclusively by clients.
+
+Platform-qualified key names carry a `mac:` / `macos:` / `windows:` prefix. The
+`mac:` / `macos:` prefixes are retained only so clients can read historical
+synced records; they do not mean the Apple client is supported or maintained.
 
 ## Cryptographic conventions
 

@@ -5,8 +5,8 @@
 
 ## Goals
 
-KeyStats synchronizes the privacy-safe core counters of up to five macOS and
-Windows devices. Cloudflare stores only encrypted payloads and random
+KeyStats synchronizes the privacy-safe core counters of up to five Windows
+devices. Cloudflare stores only encrypted payloads and random
 identifiers. The existing local statistics remain the only writable source for
 the current device; downloaded records are immutable remote shards that are
 combined only while building aggregate views.
@@ -17,7 +17,7 @@ Version 1 synchronizes:
 - per-key counts using canonical, `+`-separated names;
 - left, right, middle, back-side, and forward-side mouse clicks.
 
-Menu-bar values, today's local panel, rates, peaks, notifications, application
+Tray values, today's local panel, rates, peaks, notifications, application
 statistics, pointer distance, and scroll distance remain local. History,
 all-time summaries, key history, and heatmaps may include remote shards.
 
@@ -36,9 +36,8 @@ Pairing uses an ephemeral X25519 exchange. A new device displays a six-digit
 pairing code. Both devices must explicitly confirm the same safety code before
 the existing device releases an encrypted vault seed and new device token.
 
-macOS stores the credential bundle in the app's UserDefaults domain. Windows
-stores secrets with DPAPI `CurrentUser`. Secrets, IDs, key names, and counts are
-never analytics properties or log fields.
+Windows stores secrets with DPAPI `CurrentUser`. Secrets, IDs, key names, and
+counts are never analytics properties or log fields.
 
 ## Wire record
 

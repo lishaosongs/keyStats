@@ -1,20 +1,22 @@
 # KeyStats - AI Agent Development Guide
 
-**Project Type**: macOS Native Menu Bar Application
-**Language**: Swift 5.0
-**Target**: macOS 13.0+ (Ventura)
-**Architecture**: Event-driven singleton pattern with AppKit UI
+**Project Type**: Windows system tray application (WPF + WinForms interop)
+**Language**: C# (nullable enabled, LangVersion 10.0)
+**Runtime**: .NET Framework 4.8 (`net48`)
+**Architecture**: event-driven singleton services with light MVVM UI, plus an independent Cloudflare Worker for optional E2EE sync
 
 ## Quick Context
 
-KeyStats is a privacy-focused macOS menu bar app that tracks keyboard/mouse statistics (counts only, no content logging). Core components:
+KeyStats is a privacy-focused Windows tray app that tracks keyboard/mouse statistics (counts and distances only, no content logging). Core components:
 
-- `InputMonitor`: Global event tap for keyboard/mouse monitoring
-- `StatsManager`: Data aggregation and persistence (UserDefaults)
-- `MenuBarController`: Status bar UI with compact dual-line display
-- `StatsPopoverViewController`: Detailed statistics panel
+- `InputMonitorService`: global low-level keyboard/mouse hooks
+- `StatsManager`: data aggregation and persistence
+- `TrayIconViewModel` / `App.xaml.cs`: tray icon, context menu, popup lifecycle
+- `StatsPopupWindow`: detailed statistics panel
 
-**Privacy First**: NEVER log actual keystrokes, mouse positions, or user input content - only aggregate counts and distances.
+**Privacy First**: NEVER persist keystroke content, raw mouse paths, or clipboard data — only aggregate counts and distances.
+
+See `KeyStats.Windows/CLAUDE.md` and `KeyStats.Windows/AGENTS.md` for the full app guide, `contracts/sync/v1/README.md` for the sync protocol, and `services/sync-worker/README.md` for the sync backend.
 
 ---
 
@@ -25,9 +27,8 @@ KeyStats is a privacy-focused macOS menu bar app that tracks keyboard/mouse stat
 ```
 1. Read the relevant file(s) first
 2. Check existing patterns and naming conventions
-3. Verify Swift version compatibility (5.0+)
-4. Consider thread safety (main vs background threads)
-5. Check if changes affect permissions or privacy
+3. Consider thread safety (hook/thread-pool vs UI thread)
+4. Check if changes affect privacy or persisted data compatibility
 ```
 
 ### 🎯 When Adding New Features
@@ -35,13 +36,13 @@ KeyStats is a privacy-focused macOS menu bar app that tracks keyboard/mouse stat
 ```
 New feature request?
 ├─ UI-related?
-│  ├─ Menu bar display? → Update MenuBarController
-│  └─ Detail panel? → Update StatsPopoverViewController
+│  ├─ Tray/popup? → Update App.xaml.cs / TrayIconViewModel / StatsPopupWindow
+│  └─ New window? → Add View + ViewModel under Views/ and ViewModels/
 ├─ Statistics tracking?
-│  ├─ New metric? → Update StatsManager.Stats struct + persistence
-│  └─ New event type? → Update InputMonitor event callbacks
-├─ Data persistence? → Update StatsManager Codable conformance
-└─ Permissions needed? → Update Info.plist + AppDelegate
+│  ├─ New metric? → Update Models/DailyStats + StatsManager persistence
+│  └─ New event type? → Update InputMonitorService event callbacks
+├─ Data persistence? → Keep JSON fields backward-compatible
+└─ Sync-related? → Update contracts/sync/v1 + services/sync-worker + client sync layer
 ```
 
 ### 🐛 When Debugging Issues
@@ -49,16 +50,15 @@ New feature request?
 ```
 Issue type?
 ├─ No statistics updating?
-│  ├─ Check: AXIsProcessTrusted() returns true
-│  ├─ Check: InputMonitor.isMonitoring is true
-│  └─ Check: Event tap is active (not nil)
+│  ├─ Check: hooks installed (SetWindowsHookEx returns non-null)
+│  └─ Check: InputMonitorService is raising events
 ├─ UI not updating?
-│  ├─ Verify: Updates on DispatchQueue.main
-│  └─ Check: menuBarUpdateHandler is set
+│  ├─ Verify: updates marshalled via the WPF Dispatcher
+│  └─ Check: StatsUpdateRequested handler is wired
 ├─ Data not persisting?
-│  └─ Check: StatsManager.saveStats() called on changes
-└─ Performance issues?
-    └─ Review: Event sampling rates and debounce timers
+│  └─ Check: StatsManager flush ran on the debounced timer and on exit
+└─ Sync failing?
+   └─ Check: credentials/cache state, then services/sync-worker README
 ```
 
 ---
@@ -68,45 +68,26 @@ Issue type?
 ### 🔴 MUST Follow (Security & Privacy)
 
 - ✅ Only track counts and distances, NEVER content
-- ✅ Always check accessibility permissions before monitoring
-- ✅ Use `weak` references for delegates/closures to prevent leaks
-- ✅ Dispatch UI updates on `DispatchQueue.main`
-- ✅ Clean up event taps in `stopMonitoring()` and `deinit`
+- ✅ Never persist keystroke content, raw mouse paths, or clipboard data
+- ✅ Keep hook callbacks non-blocking; always call `CallNextHookEx`
+- ✅ Marshal UI updates through the WPF Dispatcher
+- ✅ Dispose hooks/timers/background resources in the exit sequence
 
 ### 🟡 SHOULD Follow (Quality)
 
-- ✅ One class per file, filename matches class name
-- ✅ Use `// MARK: -` for code organization
-- ✅ Use `guard` for early returns and validation
-- ✅ Use descriptive names, avoid magic numbers
-- ✅ Localize user-facing strings with `NSLocalizedString()`
-- ✅ Ensure UI colors adapt to dark mode (use dynamic colors + `resolvedCGColor`/`resolvedColor`)
-- ✅ When adding a new page/window/popover, add matching analytics at the same time: a `pageview` for the page itself and `click` events for key entry/actions, reusing the shared helper and stable event/property names
-
-### 🌗 Dark/Light Theme Switching Notes (Critical)
-
-- ✅ `CALayer.backgroundColor` / `borderColor` use `CGColor` (a static snapshot) and do not automatically follow appearance changes
-- ✅ Do not cache `NSColor.controlBackgroundColor.withAlphaComponent(...)` and reuse it across updates (especially when launched in dark mode), as it may lock in the old appearance
-- ✅ For "dynamic system color + alpha", always resolve under the current `effectiveAppearance` using a helper, e.g. `resolvedCGColor(color, alpha:for:)`
-- ✅ Re-assign layer colors on every theme change; do not rely on existing `CGColor` values to auto-update
-- ✅ Prefer multi-source appearance refresh triggers: `AppearanceTrackingView`, `NSApp.effectiveAppearance`, `AppleInterfaceThemeChangedNotification`, and `NSApplication.didBecomeActiveNotification`
-- ✅ When debugging theme issues, log `app/view/window` appearance plus final layer RGBA first to distinguish "trigger path issues" from "color resolution issues"
-
-### 🟢 RECOMMENDED (Best Practices)
-
-- ✅ Document public APIs with `///` comments
-- ✅ Use `private` for internal implementation details
-- ✅ Implement Codable for data structures needing persistence
-- ✅ Batch UI updates to reduce main thread blocking
+- ✅ One primary class per file, matching namespace/folder boundaries
+- ✅ Use `guard`-style early returns and descriptive names, avoid magic numbers
+- ✅ User-facing copy is Chinese-first; keep JSON fields and analytics event names stable
+- ✅ Support runtime light/dark theme switching via `ThemeManager` dynamic resources
+- ✅ When adding a new page/window, add matching analytics at the same time: a `pageview` for the page and `click` events for key actions
 
 ### 🟣 Automatic Commit Policy
 
-- ✅ After a feature or module is fully implemented and its relevant checks pass, automatically create an atomic Git commit without waiting for an additional user request
-- ✅ Before committing, inspect `git status` again and include only files changed for the completed feature or module
-- ✅ Do not automatically commit incomplete work, failed verification, or unrelated existing changes
-- ✅ Follow the repository's commit message and Git safety rules for every automatic commit
-- ✅ Use Conventional Commits messages matching the history, e.g. `fix(input): ...`, `feat(heatmap): ...`, `docs: ...`
-- ✅ Commit on the current branch; never push, force-push, amend, or rewrite history automatically
+- After a feature or module is fully implemented and its relevant checks pass, create an atomic commit **without waiting for the user to ask**.
+- Re-check `git status` first; stage only files belonging to the completed feature or module.
+- Do not automatically commit incomplete work, failed verification, or unrelated existing changes.
+- Use Conventional Commits style: `feat: ...`, `fix: ...`, `docs: ...`.
+- Commit on the current branch only; never push, force-push, amend, or rewrite history automatically.
 
 ### ☁️ Sync Worker Staging Deployment
 
@@ -118,287 +99,51 @@ Issue type?
 
 ## Build & Development Commands
 
-### Building
-
 ```bash
-# Development (Xcode - recommended)
-open KeyStats.xcodeproj
-# Press ⌘R to build and run
+cd KeyStats.Windows
 
-# Command line (Debug)
-xcodebuild -project KeyStats.xcodeproj -scheme KeyStats -configuration Debug build
+# Build
+dotnet build KeyStats/KeyStats.csproj -c Release
 
-# Command line (Release)
-xcodebuild -project KeyStats.xcodeproj -scheme KeyStats -configuration Release build
+# Automated tests (sync protocol, crypto fixtures, scheduling, persistence)
+dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj
+
+# Package (produces dist/KeyStats-Windows-<version>.zip)
+powershell -ExecutionPolicy Bypass -File ./build.ps1 -Configuration Release
 ```
 
-### Distribution
-
-```bash
-# Create DMG for distribution
-./scripts/build_dmg.sh
-```
-
-### Testing
-
-```bash
-# Currently no automated tests
-# When adding: Use XCTest framework in separate Tests target
-xcodebuild test -project KeyStats.xcodeproj -scheme KeyStats
-```
+Visual Studio: open `KeyStats.Windows/KeyStats.sln`, build with `Ctrl+Shift+B`, run with `F5`.
 
 ---
 
-## Code Patterns & Examples
+## Threading & Performance
 
-### Singleton Pattern (Thread-Safe)
-
-```swift
-class StatsManager {
-    static let shared = StatsManager()
-    private init() {
-        // Load from persistence
-    }
-}
-```
-
-### Permission Checking
-
-```swift
-// Check permission status
-let trusted = AXIsProcessTrusted()
-
-// Request permissions with prompt
-let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-AXIsProcessTrustedWithOptions(options as CFDictionary)
-```
-
-### Main Thread UI Updates
-
-```swift
-DispatchQueue.main.async {
-    self.updateMenuBarDisplay()
-    self.menuBarUpdateHandler?()
-}
-```
-
-### Event Monitoring Setup
-
-```swift
-let eventMask = (1 << CGEventType.keyDown.rawValue) |
-                (1 << CGEventType.leftMouseDown.rawValue)
-
-eventTap = CGEvent.tapCreate(
-    tap: .cgSessionEventTap,
-    place: .headInsertEventTap,
-    options: .defaultTap,
-    eventsOfInterest: CGEventMask(eventMask),
-    callback: eventCallback,
-    userInfo: nil
-)
-```
-
-### Debounced Updates
-
-```swift
-private var updateTimer: Timer?
-
-func scheduleDebouncedStatsUpdate() {
-    updateTimer?.invalidate()
-    updateTimer = Timer.scheduledTimer(
-        withTimeInterval: 0.5,
-        repeats: false
-    ) { [weak self] _ in
-        self?.updateMenuBar()
-    }
-}
-```
-
-### Data Persistence (Codable)
-
-```swift
-struct Stats: Codable {
-    var keyPresses: Int = 0
-    var leftClicks: Int = 0
-    // ... other properties
-}
-
-func saveStats() {
-    if let encoded = try? JSONEncoder().encode(currentStats) {
-        UserDefaults.standard.set(encoded, forKey: "currentStats")
-    }
-}
-
-func loadStats() -> Stats? {
-    guard let data = UserDefaults.standard.data(forKey: "currentStats") else { return nil }
-    return try? JSONDecoder().decode(Stats.self, from: data)
-}
-```
+- **Hook callbacks**: run on the hook thread → dispatch work via the thread pool; no IO/UI work inline
+- **UI updates**: always marshal via `Application.Current.Dispatcher`
+- **Timers**: fire on thread-pool threads → synchronize before touching shared state
+- **Mouse sampling**: 30 FPS, jumps > 500 px filtered
+- **Debounced saves**: 2 s write delay, 300 ms UI update debounce
 
 ---
 
 ## File Structure & Responsibilities
 
 ```
-KeyStats/
-├── AppDelegate.swift
-│   ├─ App lifecycle & menu bar setup
-│   ├─ Permission checking & request handling
-│   └─ Window/status bar initialization
-│
-├── InputMonitor.swift
-│   ├─ Global event tap creation (CGEvent.tapCreate)
-│   ├─ Keyboard event handling (keyDown)
-│   ├─ Mouse event handling (left/right clicks, movement)
-│   └─ 30Hz mouse sampling for performance
-│
-├── StatsManager.swift
-│   ├─ Statistics data model (Codable struct)
-│   ├─ Data aggregation & calculation
-│   ├─ UserDefaults persistence
-│   ├─ Daily auto-reset at midnight
-│   └─ Debounced UI update callbacks
-│
-├── MenuBarController.swift
-│   ├─ NSStatusItem management
-│   ├─ Dual-line compact display (keyPresses/clicks)
-│   ├─ Number formatting (K/M suffixes)
-│   └─ Popover presentation trigger
-│
-└── StatsPopoverViewController.swift
-    ├─ Detailed statistics display (all metrics)
-    ├─ Reset button handling
-    └─ Quit button handling
+KeyStats.Windows/
+├── KeyStats.sln
+├── KeyStats/
+│   ├── App.xaml(.cs)                     # Entry point, tray icon, context menu, lifecycle
+│   ├── Services/
+│   │   ├── InputMonitorService.cs        # Keyboard/mouse hooks
+│   │   ├── StatsManager.cs               # Statistics, persistence, history, sync integration
+│   │   ├── NotificationService.cs        # Toast notifications
+│   │   └── StartupManager.cs             # Windows startup
+│   ├── ViewModels/                       # Tray, popup, settings, app-stats, key-history, ...
+│   ├── Views/                            # Windows + Controls/
+│   ├── Models/                           # DailyStats, AppStats, AppSettings
+│   └── Helpers/                          # NativeInterop, KeyNameMapper, ThemeManager, Converters
+└── KeyStats.Sync.Tests/                  # MSTest suite for the sync protocol and persistence
 ```
-
----
-
-## Common Modification Scenarios
-
-### Adding a New Statistic
-
-1. **Update Stats struct** in `StatsManager.swift`:
-
-```swift
-struct Stats: Codable {
-    var newMetric: Int = 0  // Add new property
-    // ... existing properties
-}
-```
-
-2. **Add tracking logic** in `InputMonitor.swift`:
-
-```swift
-private let eventCallback: CGEventTapCallBack = { proxy, type, event, refcon in
-    // ... existing logic
-    StatsManager.shared.incrementNewMetric()  // Add call
-}
-```
-
-3. **Add increment method** in `StatsManager.swift`:
-
-```swift
-func incrementNewMetric() {
-    currentStats.newMetric += 1
-    scheduleDebouncedStatsUpdate()
-}
-```
-
-4. **Update UI** in `StatsPopoverViewController.swift`:
-
-```swift
-// Add label and update in refreshStats()
-newMetricLabel.stringValue = "\(stats.newMetric)"
-```
-
-### Modifying Menu Bar Display
-
-Edit `MenuBarController.updateMenuBarText()`:
-
-```swift
-func updateMenuBarText(keyPresses: Int, mouseClicks: Int) {
-    let line1 = formatNumber(keyPresses)  // Top line
-    let line2 = formatNumber(mouseClicks) // Bottom line
-    // Update attributed string
-}
-```
-
-### Changing Reset Behavior
-
-Edit `StatsManager.resetStats()`:
-
-```swift
-func resetStats() {
-    currentStats = Stats()  // Reset to defaults
-    saveStats()             // Persist immediately
-    updateMenuBar()         // Update UI
-}
-```
-
----
-
-## UI Style (macOS Liquid Glass)
-
-### Design Rules
-
-- Prefer soft surfaces: use `controlBackgroundColor` with alpha ~0.6–0.85 for panels/cards
-- Avoid heavy borders: use thin 0.5pt separators with low alpha instead of 1pt strokes
-- Use subtle shadows: small radius, low opacity, slight upward offset
-- Keep corners consistent: 10–12pt for cards, smaller (6–8pt) for compact elements
-- Always resolve dynamic colors with `resolvedCGColor(...)` for dark mode consistency
-
-### Helper Pattern
-
-```swift
-private func applyGlassCardStyle(_ layer: CALayer?, for view: NSView) {
-    guard let layer = layer else { return }
-    layer.masksToBounds = false
-    layer.shadowColor = resolvedCGColor(NSColor.black.withAlphaComponent(0.07), for: view)
-    layer.shadowOpacity = 1
-    layer.shadowRadius = 8
-    layer.shadowOffset = NSSize(width: 0, height: -1)
-    layer.borderWidth = 0.5
-    layer.borderColor = resolvedCGColor(NSColor.separatorColor.withAlphaComponent(0.16), for: view)
-}
-```
-
----
-
-## Threading & Performance
-
-### Thread Safety Rules
-
-- **Event callbacks**: Run on background threads → dispatch UI updates to main
-- **UI updates**: ALWAYS use `DispatchQueue.main.async`
-- **Timers**: Run on RunLoop → ensure main thread for UI-affecting timers
-
-### Performance Optimizations
-
-- **Mouse sampling**: 30Hz (1/30 second) instead of every event
-- **Debounced saves**: 500ms delay to batch rapid changes
-- **Lazy UI updates**: Only refresh when popover is visible
-
----
-
-## Localization
-
-### String Localization Pattern
-
-```swift
-// In code
-let title = NSLocalizedString("stats.title", comment: "")
-
-// In Localizable.strings (English)
-"stats.title" = "Statistics";
-
-// In zh-Hans.strings (Chinese)
-"stats.title" = "统计数据";
-```
-
-### Supported Languages
-
-- English (default)
-- 简体中文 (zh-Hans)
 
 ---
 
@@ -406,93 +151,33 @@ let title = NSLocalizedString("stats.title", comment: "")
 
 ### Before Committing Changes
 
-- [ ] Build succeeds (⌘B in Xcode)
+- [ ] Relevant targeted checks pass; do not build by default (see `KeyStats.Windows/AGENTS.md`)
+- [ ] `dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj` passes when sync/persistence code changed
 - [ ] App runs without crashes
-- [ ] Accessibility permission prompt works
-- [ ] Statistics update in real-time
-- [ ] Menu bar display formats correctly
-- [ ] Data persists across app restarts
+- [ ] Statistics update in real-time and persist across restarts
 - [ ] Daily reset works at midnight
-- [ ] No force unwraps added (use `if let` or `guard`)
-- [ ] No retain cycles (use `[weak self]` in closures)
-- [ ] UI updates on main thread
+- [ ] No hook callbacks blocked by IO/UI work
+- [ ] UI updates on the Dispatcher thread
+- [ ] No content (keys, mouse paths, clipboard) persisted or logged
 
 ### Manual Testing Steps
 
-1. Grant accessibility permission
-2. Type and click to verify counter increments
-3. Check menu bar display updates
-4. Open popover to verify detailed stats
-5. Test reset button
-6. Quit and relaunch to verify persistence
-7. Wait past midnight to verify auto-reset
-
----
-
-## Important Constants
-
-```swift
-// Mouse sampling rate
-private let mouseSampleInterval: TimeInterval = 1.0 / 30.0  // 30Hz
-
-// Debounce delay for stats updates
-private let updateDebounceDelay: TimeInterval = 0.5  // 500ms
-
-// Number formatting thresholds
-let thousandThreshold = 1_000
-let millionThreshold = 1_000_000
-
-// UserDefaults keys
-let statsKey = "currentStats"
-let lastResetDateKey = "lastResetDate"
-```
+1. Launch and confirm the tray icon appears
+2. Type and click to verify counters increment
+3. Open the popup to verify detailed stats, key breakdown, and charts
+4. Test reset, settings, and startup toggle
+5. Quit and relaunch to verify persistence
+6. Wait past midnight to verify auto-reset
 
 ---
 
 ## Documentation References
 
-### Apple Documentation
-
-- [CGEvent Reference](https://developer.apple.com/documentation/coregraphics/cgevent)
-- [Accessibility API](https://developer.apple.com/documentation/applicationservices/axuielement)
-- [NSStatusItem](https://developer.apple.com/documentation/appkit/nsstatusitem)
-- [UserDefaults](https://developer.apple.com/documentation/foundation/userdefaults)
-
 ### Project Documentation
 
-- [README.md](./README.md) - Chinese documentation
-- [README_EN.md](./README_EN.md) - English documentation
-- [QUICKSTART.md](./QUICKSTART.md) - Quick start guide
-
----
-
-## Agent-Specific Guidance
-
-### When Analyzing Code
-
-1. Read files before making suggestions
-2. Follow existing patterns (singleton, weak delegates, main thread UI)
-3. Check for thread safety implications
-4. Verify privacy compliance (no content logging)
-
-### When Writing Code
-
-1. Match existing code style and naming
-2. Use `// MARK:` sections for organization
-3. Add `weak` to delegate/closure references
-4. Localize user-facing strings
-5. Document public methods with `///`
-
-### When Debugging
-
-1. Check permission status first
-2. Verify event tap is active
-3. Confirm main thread for UI updates
-4. Review debounce timers and sampling rates
-
-### When Refactoring
-
-1. Maintain backward compatibility with UserDefaults keys
-2. Keep singleton patterns intact
-3. Preserve thread safety
-4. Update all UI references if changing data models
+- `README.md` / `README_ZH.md` — install, features, privacy, build
+- `QUICKSTART.md` — quick start guide
+- `KeyStats.Windows/README.md` — Windows app details
+- `KeyStats.Windows/CLAUDE.md` / `KeyStats.Windows/AGENTS.md` — app development guide
+- `contracts/sync/v1/README.md` — sync protocol
+- `services/sync-worker/README.md` — sync backend operations

@@ -35,7 +35,6 @@ jobs:
               platform: {
                 title: "Affected Platform",
                 values: {
-                  macos: "macOS",
                   windows: "Windows"
                 }
               },
@@ -67,7 +66,6 @@ jobs:
             }
 
             const labelColors = {
-              macos: "0E8A16",
               windows: "1D76DB",
               bug: "D73A4A",
               question: "D876E3"

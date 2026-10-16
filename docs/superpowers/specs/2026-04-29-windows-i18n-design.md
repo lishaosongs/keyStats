@@ -6,7 +6,7 @@
 
 ## 背景
 
-KeyStats Windows 版（`KeyStats.Windows/`，WPF + .NET Framework 4.8）当前 UI 仅有简体中文，硬编码散落在 25 个 `*.cs` / `*.xaml` 文件中、约 358 处。macOS 版已有完整双语（`KeyStats/{en,zh-Hans}.lproj/Localizable.strings`，约 231 个 key）。
+KeyStats Windows 版（`KeyStats.Windows/`，WPF + .NET Framework 4.8）当前 UI 仅有简体中文，硬编码散落在 25 个 `*.cs` / `*.xaml` 文件中、约 358 处。
 
 本次目标：让 Windows 版同时支持简体中文和英文，启动时跟随系统语言，并在 Settings 里提供手动覆盖。
 
@@ -17,7 +17,6 @@ KeyStats Windows 版（`KeyStats.Windows/`，WPF + .NET Framework 4.8）当前 U
   - 其它一切（含繁体 `zh-TW`/`zh-HK`、英文、日文等）→ 英文
 - 在「设置」里提供 Language 下拉（System / 中文 / English），用户可手动覆盖系统判定
 - 切换语言通过 **重启应用** 生效（用户确认后自动重启）
-- 复用 macOS 版已有的翻译，避免术语不一致和重复翻译工作
 
 ## 非目标
 
@@ -71,7 +70,7 @@ KeyStats.Windows/KeyStats/
   - `Error_AppAlreadyRunning`、`Error_StartupFailedFormat`
   - `Common_Ok`、`Common_Cancel`、`Common_Close`、`Common_Retry`
   - `Toast_ExportSuccess_Title`、`Toast_ExportSuccess_BodyFormat`
-- 占位符用 `{0}` / `{1}`（C# `string.Format` 风格），不用 macOS 的 `%@` / `%1$@`
+- 占位符用 `{0}` / `{1}`（C# `string.Format` 风格）
 - `.resx` 和自动生成的 `Strings.Designer.cs` 都入库到 git
 - key 数量预估 ~200，最终以盘点结果为准
 
@@ -430,45 +429,18 @@ zh-Hans:
 
 ## 翻译来源
 
-### macOS 版 key 映射规则
+英文为中性资源（`Strings.resx`，默认 + fallback），简体中文为 `Strings.zh-Hans.resx`。key 命名统一为下划线分隔的 PascalCase（`Settings_Title`、`Notification_Threshold_Body_Keys`），带占位符的 key 加 `Format` 后缀。
 
-macOS `Localizable.strings` 用点分式 + camelCase（`settings.title`、`notification.threshold.body.keys`）；WPF `.resx` 用下划线分隔的 PascalCase（`Settings_Title`、`Notification_Threshold_Body_Keys`）。
+主要 key 分类：
 
-规则：
-1. `.` → `_`
-2. 每段首字母大写
-3. `%@` → `{0}`，`%1$@` / `%2$@` → `{0}` / `{1}`
-4. 多个占位符的 key 加 `Format` 后缀
-
-例：
-
-```
-macOS:  "settings.mouseDistanceCalibration.success.message" = "10 cm ≈ %1$@, factor updated to %2$@.";
-WPF:    Settings_MouseDistanceCalibration_Success_MessageFormat = "10 cm ≈ {0}, factor updated to {1}."
-```
-
-### 复用 vs 新增
-
-**直接复用 macOS 翻译**（约 60-70%）：
-- 设置项标题（"通知设置" / "Notification Settings"）
-- 通用按钮（"OK" / "Cancel" / "Close" / "Retry"）
-- 错误/成功提示通用文案
-- 时间标签（"今日" / "Today"）
-
-**Windows 独有 key**：
 - 托盘相关：`Tray_OpenMainWindow`、`Tray_KeyHistory`、`Tray_Quit`
 - 启动错误：`Error_StartupFailedFormat`、`Error_AppAlreadyRunning`
-- Toast 通知（macOS 用 `UNUserNotificationCenter`，文案略不同）
+- Toast 通知：`Toast_*`
 - 导入对话框：`Import_Mode_Merge`、`Import_Mode_Overwrite`、`Import_Mode_Cancel`
 - 重启提示：`Language_RestartPromptTitle/Message`
 - Language 设置卡片：`Settings_Language`、`Settings_LanguageDescription`、`Settings_Language_System`
 
-**macOS 有但 Windows 不需要**：
-- `permission.*`（macOS 辅助功能权限对话框，Windows 没有）
-- `menu.window`、`menu.closeWindow`（macOS 主菜单栏）
-- 部分 macOS 独有 setting key
-
-实施时一次性把所有中文抽到 `Strings.resx` / `Strings.zh-Hans.resx`，不分阶段；翻译质量靠对照 macOS 同概念词 + 自检 + 用户 review。
+实施时一次性把所有中文抽到 `Strings.resx` / `Strings.zh-Hans.resx`，不分阶段；同一概念在各窗口使用同一中文词，翻译质量靠自检 + 用户 review。
 
 ## 迁移文件清单
 

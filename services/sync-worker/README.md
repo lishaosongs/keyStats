@@ -49,9 +49,8 @@ to the repository. Main deploys staging; production requires the
 
 After production deployment, set repository variable
 `KEYSTATS_SYNC_PRODUCTION_URL` to the resulting independent `workers.dev` URL.
-Release builds inject it into macOS `Info.plist` and Windows assembly metadata.
-Missing or placeholder endpoints leave the public UI visible but networking
-disabled.
+Release builds inject it into the Windows assembly metadata. Missing or
+placeholder endpoints leave the public UI visible but networking disabled.
 
 ## Storage and limits
 
