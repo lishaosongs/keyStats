@@ -192,6 +192,11 @@
   <data name="Heatmap_NextDay" xml:space="preserve"><value>下一天</value></data>
   <data name="Heatmap_BackToToday" xml:space="preserve"><value>回到今天</value></data>
   <data name="Heatmap_NoData" xml:space="preserve"><value>所選範圍暫無鍵盤活動</value></data>
+  <data name="Heatmap_AppFilter" xml:space="preserve"><value>依 App 篩選</value></data>
+  <data name="Heatmap_AllApps" xml:space="preserve"><value>所有 App</value></data>
+  <data name="Heatmap_AppOptionFormat" xml:space="preserve"><value>{0} · {1} 次按鍵</value></data>
+  <data name="Heatmap_NoAppData" xml:space="preserve"><value>此 App 暫無按鍵分佈資料</value></data>
+  <data name="Heatmap_AppFilterLocalOnly" xml:space="preserve"><value>應用篩選僅統計本機</value></data>
   <data name="Heatmap_SummaryFormat" xml:space="preserve"><value>總計 {0} 次按鍵 · {1} 個活躍鍵</value></data>
   <data name="Heatmap_AverageSummaryFormat" xml:space="preserve"><value>平均每天 {0} 次按鍵 · {1} 個活躍鍵</value></data>
   <data name="Heatmap_DatePickerTooltip" xml:space="preserve"><value>選擇日期</value></data>

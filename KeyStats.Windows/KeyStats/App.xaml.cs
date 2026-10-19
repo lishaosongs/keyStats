@@ -26,10 +26,13 @@ namespace KeyStats;
 
 public partial class App : System.Windows.Application
 {
-    private Forms.NotifyIcon? _trayIcon;
+    private TrayIconHost? _trayIcon;
     private TrayIconViewModel? _trayIconViewModel;
     private TrayContextMenuHost? _trayContextMenuHost;
-    private TaskbarCreatedWatcher? _taskbarCreatedWatcher;
+    private DispatcherTimer? _trayRecoveryTimer;
+    private int _trayRecoveryAttempts;
+    private const int TrayRecoveryMaxAttempts = 10;
+    private bool _isExiting;
     private SettingsWindow? _settingsWindow;
     private NotificationSettingsWindow? _notificationSettingsWindow;
     private MouseCalibrationWindow? _mouseCalibrationWindow;
@@ -127,22 +130,21 @@ public partial class App : System.Windows.Application
             Console.WriteLine("Creating tray icon...");
             _trayIconViewModel = new TrayIconViewModel();
             _trayIconViewModel.PropertyChanged += OnTrayIconViewModelPropertyChanged;
-            _taskbarCreatedWatcher = new TaskbarCreatedWatcher(() =>
+            _trayContextMenuHost = new TrayContextMenuHost(CreateContextMenu());
+            _trayIcon = new TrayIconHost();
+            _trayIcon.MouseClick += OnTrayIconMouseClick;
+            _trayIcon.RecoveryRequested += OnTrayRecoveryRequested;
+            if (!_trayIcon.TryRefresh(_trayIconViewModel.TrayIcon, _trayIconViewModel.TooltipText))
             {
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    Console.WriteLine("TaskbarCreated received, recreating tray integration.");
-                    RecreateTrayIntegration();
-                }));
-            });
-            RecreateTrayIntegration();
+                ScheduleTrayRecovery("startup");
+            }
 
             if (statsManager.Settings.FloatingStatsEnabled)
             {
                 ShowFloatingStatsWindow();
             }
 
-            Console.WriteLine("Tray icon created successfully!");
+            Console.WriteLine("Tray integration initialized; failed registrations will be retried.");
             Console.WriteLine("App is running. Look for the icon in the system tray.");
         }
         catch (Exception ex)
@@ -625,6 +627,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _isExiting = true;
+        StopTrayRecovery();
         StopFloatingStatsVisibilityMonitor();
         UnregisterSystemEventHandlers();
         if (_trayIconViewModel != null)
@@ -632,17 +636,16 @@ public partial class App : System.Windows.Application
             _trayIconViewModel.PropertyChanged -= OnTrayIconViewModelPropertyChanged;
         }
         TrackAnalyticsExit();
-        _trayIconViewModel?.Cleanup();
         _trayContextMenuHost?.Dispose();
-        _taskbarCreatedWatcher?.Dispose();
-        _taskbarCreatedWatcher = null;
+        _trayContextMenuHost = null;
         if (_trayIcon != null)
         {
             _trayIcon.MouseClick -= OnTrayIconMouseClick;
-            _trayIcon.Visible = false;
+            _trayIcon.RecoveryRequested -= OnTrayRecoveryRequested;
             _trayIcon.Dispose();
             _trayIcon = null;
         }
+        _trayIconViewModel?.Cleanup();
         _floatingStatsWindow?.Close();
         _floatingStatsWindow = null;
         InputMonitorService.Instance.StopMonitoring();
@@ -1101,6 +1104,14 @@ public partial class App : System.Windows.Application
 
     private void ScheduleResumeRecovery(string trigger)
     {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        // Tray recovery has its own coalescing timer, so a later unlock can retry even
+        // when the heavier stats/hook recovery below is still inside its debounce window.
+        Dispatcher.BeginInvoke(new Action(() => ScheduleTrayRecovery(trigger)));
         var nowTicks = DateTime.UtcNow.Ticks;
         var debounceWindowTicks = TimeSpan.FromSeconds(5).Ticks;
 
@@ -1123,6 +1134,11 @@ public partial class App : System.Windows.Application
 
     private void RecoverAfterResume(string trigger)
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         Console.WriteLine($"Running resume recovery triggered by {trigger}.");
 
         Task.Run(() =>
@@ -1146,52 +1162,101 @@ public partial class App : System.Windows.Application
             }
         });
 
-        try
-        {
-            RecreateTrayIntegration();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Tray icon resume recovery failed: {ex}");
-        }
         _syncCoordinator?.HandleAppResume();
     }
 
-    private void RecreateTrayIntegration()
+    private void OnTrayRecoveryRequested(object? sender, EventArgs e)
     {
-        if (_trayIconViewModel == null)
+        Dispatcher.BeginInvoke(new Action(() => ScheduleTrayRecovery("taskbar_created")));
+    }
+
+    private void ScheduleTrayRecovery(string trigger)
+    {
+        if (_isExiting || _trayIcon == null || _trayIconViewModel == null)
         {
             return;
         }
 
+        Console.WriteLine($"Scheduling tray recovery: {trigger}.");
+        // Close any stale popup/owner left open across a desktop or session change.
         _trayContextMenuHost?.Dispose();
         _trayContextMenuHost = new TrayContextMenuHost(CreateContextMenu());
 
-        if (_trayIcon != null)
+        if (_trayRecoveryTimer == null)
         {
-            _trayIcon.MouseClick -= OnTrayIconMouseClick;
-            _trayIcon.Visible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
+            _trayRecoveryTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher);
+            _trayRecoveryTimer.Tick += OnTrayRecoveryTick;
         }
 
-        _trayIcon = new Forms.NotifyIcon
-        {
-            Icon = _trayIconViewModel.TrayIcon,
-            Text = _trayIconViewModel.TooltipText,
-            Visible = true
-        };
-        _trayIcon.MouseClick += OnTrayIconMouseClick;
+        _trayRecoveryAttempts = 0;
+        _trayRecoveryTimer.Stop();
+        _trayRecoveryTimer.Interval = TimeSpan.FromSeconds(1);
+        _trayRecoveryTimer.Start();
+    }
 
+    private void OnTrayRecoveryTick(object? sender, EventArgs e)
+    {
+        if (_isExiting || _trayIcon == null || _trayIconViewModel == null)
+        {
+            StopTrayRecovery();
+            return;
+        }
+
+        _trayRecoveryAttempts++;
+        try
+        {
+            if (_trayIcon.TryRefresh(_trayIconViewModel.TrayIcon, _trayIconViewModel.TooltipText))
+            {
+                Console.WriteLine($"Tray recovery succeeded on attempt {_trayRecoveryAttempts}.");
+                StopTrayRecovery();
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Tray recovery attempt {_trayRecoveryAttempts} failed: {ex}");
+        }
+
+        if (_trayRecoveryAttempts >= TrayRecoveryMaxAttempts)
+        {
+            Console.WriteLine("Tray recovery exhausted retries; waiting for the next taskbar/session event.");
+            StopTrayRecovery();
+            return;
+        }
+
+        if (_trayRecoveryTimer != null)
+        {
+            _trayRecoveryTimer.Interval = TimeSpan.FromSeconds(2);
+        }
+    }
+
+    private void StopTrayRecovery()
+    {
+        if (_trayRecoveryTimer == null)
+        {
+            return;
+        }
+
+        _trayRecoveryTimer.Stop();
+        _trayRecoveryTimer.Tick -= OnTrayRecoveryTick;
+        _trayRecoveryTimer = null;
     }
 
     private void OnTrayIconMouseClick(object? sender, Forms.MouseEventArgs e)
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         if (e.Button == Forms.MouseButtons.Right)
         {
             Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
             {
-                _trayContextMenuHost?.ShowAtCursor();
+                if (!_isExiting)
+                {
+                    _trayContextMenuHost?.ShowAtCursor();
+                }
             }));
             return;
         }
@@ -1201,7 +1266,7 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        Console.WriteLine("NotifyIcon left click fired - showing stats");
+        Console.WriteLine("Tray icon left click fired - showing stats");
         Task.Run(() =>
         {
             try
@@ -1216,7 +1281,10 @@ public partial class App : System.Windows.Application
         var anchorPoint = Forms.Control.MousePosition;
         Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
         {
-            _trayIconViewModel?.ShowStats(anchorPoint);
+            if (!_isExiting)
+            {
+                _trayIconViewModel?.ShowStats(anchorPoint);
+            }
         }));
     }
 
@@ -1227,13 +1295,10 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        if (e.PropertyName == nameof(TrayIconViewModel.TrayIcon))
+        if (e.PropertyName == nameof(TrayIconViewModel.TrayIcon) ||
+            e.PropertyName == nameof(TrayIconViewModel.TooltipText))
         {
-            _trayIcon.Icon = _trayIconViewModel.TrayIcon;
-        }
-        else if (e.PropertyName == nameof(TrayIconViewModel.TooltipText))
-        {
-            _trayIcon.Text = _trayIconViewModel.TooltipText;
+            Dispatcher.BeginInvoke(new Action(() => ScheduleTrayRecovery("view_model_changed")));
         }
     }
 
@@ -1289,6 +1354,8 @@ public partial class App : System.Windows.Application
         public void Dispose()
         {
             _menu.Closed -= OnMenuClosed;
+            _menu.IsOpen = false;
+            _menu.PlacementTarget = null;
             CloseHostWindow();
         }
 
@@ -1373,41 +1440,6 @@ public partial class App : System.Windows.Application
                 };
 
                 Content = Anchor;
-            }
-        }
-    }
-
-    private sealed class TaskbarCreatedWatcher : Forms.NativeWindow, IDisposable
-    {
-        private readonly Action _taskbarCreatedHandler;
-        private readonly int _taskbarCreatedMessage;
-
-        public TaskbarCreatedWatcher(Action taskbarCreatedHandler)
-        {
-            _taskbarCreatedHandler = taskbarCreatedHandler;
-            _taskbarCreatedMessage = unchecked((int)NativeInterop.RegisterWindowMessage("TaskbarCreated"));
-
-            CreateHandle(new Forms.CreateParams
-            {
-                Caption = "KeyStatsTaskbarWatcher"
-            });
-        }
-
-        protected override void WndProc(ref Forms.Message m)
-        {
-            if (_taskbarCreatedMessage != 0 && m.Msg == _taskbarCreatedMessage)
-            {
-                _taskbarCreatedHandler();
-            }
-
-            base.WndProc(ref m);
-        }
-
-        public void Dispose()
-        {
-            if (Handle != IntPtr.Zero)
-            {
-                DestroyHandle();
             }
         }
     }

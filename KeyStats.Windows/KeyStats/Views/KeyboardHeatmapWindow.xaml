@@ -13,6 +13,120 @@
         Background="{DynamicResource WindowSurfaceBrush}"
         ShowInTaskbar="True">
     <Window.Resources>
+        <Style x:Key="HeatmapAppFilterItemStyle" TargetType="{x:Type ComboBoxItem}">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+                        <Border x:Name="ItemSurface" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <Grid>
+                                <Border x:Name="SelectionIndicator" Width="3" Height="16" CornerRadius="1.5"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        Background="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemSurface" Property="Background" Value="{DynamicResource SubtleHoverBrush}"/>
+                                <Setter TargetName="SelectionIndicator" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemSurface" Property="Background" Value="{DynamicResource MenuItemHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ItemSurface" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HeatmapAppFilterStyle" TargetType="{x:Type ComboBox}">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="12,8,36,8"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource HeatmapAppFilterItemStyle}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBox}">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border x:Name="FilterSurface" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6"/>
+                            <Border x:Name="HoverSurface" Background="Transparent" CornerRadius="6" IsHitTestVisible="False"/>
+                            <ToggleButton Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                        <Border Background="Transparent"/>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              IsHitTestVisible="False"/>
+                            <Path Data="M 0,0 L 4,4 L 8,0" Stroke="{DynamicResource TextSecondaryBrush}"
+                                  StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0"
+                                  IsHitTestVisible="False"/>
+                            <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                                   Focusable="False" PopupAnimation="Fade"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        Margin="0,6,0,0" Padding="4"
+                                        Background="{DynamicResource ContextMenuBackgroundBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" CornerRadius="8">
+                                    <ScrollViewer CanContentScroll="True"
+                                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"
+                                                        SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="HoverSurface" Property="Background" Value="{DynamicResource MenuItemHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="FilterSurface" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="FilterSurface" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="HoverSurface" Property="Background" Value="{DynamicResource MenuItemHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="HeatmapSegmentedButton"
                TargetType="{x:Type RadioButton}"
                BasedOn="{StaticResource SegmentedButton}">
@@ -166,18 +280,76 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock x:Name="TitleText"
-                       Text="{x:Static p:Strings.Heatmap_HeaderTitle}"
-                       FontSize="24"
-                       FontWeight="Bold"
-                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <TextBlock x:Name="SubtitleText"
-                       Text="{x:Static p:Strings.Heatmap_HeaderSubtitle}"
-                       Margin="0,4,0,0"
-                       FontSize="12"
-                       Foreground="{DynamicResource TextSecondaryBrush}"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock x:Name="TitleText"
+                           Text="{x:Static p:Strings.Heatmap_HeaderTitle}"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <TextBlock x:Name="SubtitleText"
+                           Text="{x:Static p:Strings.Heatmap_HeaderSubtitle}"
+                           Margin="0,4,0,0"
+                           FontSize="12"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+            <StackPanel x:Name="AppFilterPanel"
+                        Grid.Column="1"
+                        Margin="16,0,0,0"
+                        VerticalAlignment="Center">
+                <ComboBox x:Name="AppFilterComboBox"
+                          Style="{StaticResource HeatmapAppFilterStyle}"
+                          Width="240"
+                          HorizontalContentAlignment="Stretch"
+                          MaxDropDownHeight="360"
+                          AutomationProperties.Name="{x:Static p:Strings.Heatmap_AppFilter}"
+                          AutomationProperties.HelpText="{x:Static p:Strings.Heatmap_AppFilterLocalOnly}"
+                          ToolTip="{x:Static p:Strings.Heatmap_AppFilterLocalOnly}"
+                          SelectionChanged="AppFilterComboBox_SelectionChanged"
+                          DropDownClosed="AppFilterComboBox_DropDownClosed">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <Image x:Name="AppIcon" Source="{Binding Icon}" Stretch="Uniform"/>
+                                    <TextBlock x:Name="FallbackAppIcon"
+                                               Text="&#xE71D;"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="14"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="Collapsed"/>
+                                </Grid>
+                                <TextBlock Grid.Column="1" Text="{Binding Label}"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            </Grid>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding HasIcon}" Value="False">
+                                    <Setter TargetName="AppIcon" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="FallbackAppIcon" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock x:Name="AppFilterHintText"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Right"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="{x:Static p:Strings.Heatmap_AppFilterLocalOnly}"/>
+            </StackPanel>
+        </Grid>
 
         <Grid Grid.Row="1" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>

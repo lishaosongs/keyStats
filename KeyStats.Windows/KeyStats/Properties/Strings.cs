@@ -218,6 +218,11 @@ public static class Strings
     public static string Heatmap_NextDay => Get(nameof(Heatmap_NextDay));
     public static string Heatmap_BackToToday => Get(nameof(Heatmap_BackToToday));
     public static string Heatmap_NoData => Get(nameof(Heatmap_NoData));
+    public static string Heatmap_AppFilter => Get(nameof(Heatmap_AppFilter));
+    public static string Heatmap_AllApps => Get(nameof(Heatmap_AllApps));
+    public static string Heatmap_AppOptionFormat => Get(nameof(Heatmap_AppOptionFormat));
+    public static string Heatmap_NoAppData => Get(nameof(Heatmap_NoAppData));
+    public static string Heatmap_AppFilterLocalOnly => Get(nameof(Heatmap_AppFilterLocalOnly));
     public static string Heatmap_SummaryFormat => Get(nameof(Heatmap_SummaryFormat));
     public static string Heatmap_AverageSummaryFormat => Get(nameof(Heatmap_AverageSummaryFormat));
     public static string Heatmap_DatePickerTooltip => Get(nameof(Heatmap_DatePickerTooltip));

@@ -1,12 +1,21 @@
+using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace KeyStats.Models;
 
 public class AppStats
 {
+    private Dictionary<string, int> _keyPressCounts = new(StringComparer.Ordinal);
+
     public string AppName { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public int KeyPresses { get; set; }
+    public Dictionary<string, int> KeyPressCounts
+    {
+        get => _keyPressCounts;
+        set => _keyPressCounts = value ?? new Dictionary<string, int>(StringComparer.Ordinal);
+    }
     public int LeftClicks { get; set; }
     public int RightClicks { get; set; }
     public int MiddleClicks { get; set; }
@@ -40,6 +49,7 @@ public class AppStats
         AppName = source.AppName;
         DisplayName = source.DisplayName;
         KeyPresses = source.KeyPresses;
+        KeyPressCounts = new Dictionary<string, int>(source.KeyPressCounts, StringComparer.Ordinal);
         LeftClicks = source.LeftClicks;
         RightClicks = source.RightClicks;
         MiddleClicks = source.MiddleClicks;
@@ -48,7 +58,14 @@ public class AppStats
         ScrollDistance = source.ScrollDistance;
     }
 
-    public void RecordKeyPress() => KeyPresses++;
+    public void RecordKeyPress(string? keyName = null)
+    {
+        KeyPresses++;
+        if (keyName == null || string.IsNullOrWhiteSpace(keyName)) return;
+
+        var key = keyName.Trim();
+        KeyPressCounts[key] = KeyPressCounts.TryGetValue(key, out var count) ? count + 1 : 1;
+    }
     public void RecordLeftClick() => LeftClicks++;
     public void RecordRightClick() => RightClicks++;
     public void RecordMiddleClick() => MiddleClicks++;

@@ -28,7 +28,24 @@ public partial class KeyboardHeatmapWindow : Window
     private bool _pendingRefresh;
     private bool _isTransitionAnimating;
     private bool _suppressCalendarSelection;
+    private bool _suppressAppSelection;
+    private string? _selectedAppName;
     private bool _isReady;
+
+    private sealed class AppFilterOption
+    {
+        public string? AppName { get; }
+        public string Label { get; }
+        public ImageSource? Icon { get; }
+        public bool HasIcon => Icon != null;
+
+        public AppFilterOption(string? appName, string label, ImageSource? icon = null)
+        {
+            AppName = appName;
+            Label = label;
+            Icon = icon;
+        }
+    }
     private StatsManager.KeyboardHeatmapRange _selectedRange = StatsManager.KeyboardHeatmapRange.Today;
     private StatsManager.KeyboardHeatmapMode _selectedMode = StatsManager.KeyboardHeatmapMode.Average;
 
@@ -123,7 +140,7 @@ public partial class KeyboardHeatmapWindow : Window
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 _pendingRefresh = false;
-                if (!_isTransitionAnimating)
+                if (!_isTransitionAnimating && !AppFilterComboBox.IsDropDownOpen)
                 {
                     RefreshData();
                 }
@@ -155,6 +172,10 @@ public partial class KeyboardHeatmapWindow : Window
         if (range == StatsManager.KeyboardHeatmapRange.Today)
         {
             _selectedDate = DateTime.Today;
+        }
+        else
+        {
+            _selectedAppName = null;
         }
 
         DatePickerPopup.IsOpen = false;
@@ -213,7 +234,9 @@ public partial class KeyboardHeatmapWindow : Window
 
         if (_selectedRange == StatsManager.KeyboardHeatmapRange.Today)
         {
-            var dayData = manager.GetKeyboardHeatmapDay(_selectedDate);
+            var dayData = manager.GetKeyboardHeatmapDay(_selectedDate, _selectedAppName);
+            _selectedAppName = dayData.SelectedAppName;
+            UpdateAppFilter(dayData);
             visibleCounts = dayData.KeyCounts
                 .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
                 .ToDictionary(kvp => kvp.Key, kvp => (double)kvp.Value, StringComparer.Ordinal);
@@ -221,6 +244,8 @@ public partial class KeyboardHeatmapWindow : Window
         }
         else
         {
+            _selectedAppName = null;
+            ClearAppFilter();
             var summary = manager.GetKeyboardHeatmapSummary(_selectedRange, _selectedMode);
             visibleCounts = summary.KeyCounts
                 .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
@@ -239,12 +264,75 @@ public partial class KeyboardHeatmapWindow : Window
         SummaryText.Text = string.Format(CultureInfo.CurrentCulture, summaryFormat, totalFormatted, activeFormatted);
         DateText.Text = DisplayDateString(_selectedDate);
 
-        var hasActivity = totalKeyPresses > 0;
+        var hasActivity = _selectedRange == StatsManager.KeyboardHeatmapRange.Today
+            ? visibleCounts.Values.Any(value => value > 0)
+            : totalKeyPresses > 0;
+        EmptyBadgeText.Text = _selectedRange == StatsManager.KeyboardHeatmapRange.Today && _selectedAppName != null
+            ? KeyStats.Properties.Strings.Heatmap_NoAppData
+            : KeyStats.Properties.Strings.Heatmap_NoData;
         EmptyOverlay.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
         EmptyBadge.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
 
         UpdateNavigationState();
         UpdateDatePickerState();
+    }
+
+    private void UpdateAppFilter(StatsManager.KeyboardHeatmapDay dayData)
+    {
+        var options = new List<AppFilterOption>
+        {
+            new(null, KeyStats.Properties.Strings.Heatmap_AllApps)
+        };
+        options.AddRange(dayData.Apps.Select(app => new AppFilterOption(
+            app.AppName,
+            string.Format(CultureInfo.CurrentCulture, KeyStats.Properties.Strings.Heatmap_AppOptionFormat,
+                string.IsNullOrWhiteSpace(app.DisplayName) ? app.AppName : app.DisplayName,
+                app.KeyPresses.ToString("N0", CultureInfo.CurrentCulture)),
+            AppIconHelper.GetAppIcon(app.AppName, app.DisplayName))));
+
+        _suppressAppSelection = true;
+        try
+        {
+            AppFilterComboBox.ItemsSource = options;
+            AppFilterComboBox.SelectedItem = options.First(option =>
+                string.Equals(option.AppName, _selectedAppName, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _suppressAppSelection = false;
+        }
+    }
+
+    private void ClearAppFilter()
+    {
+        _suppressAppSelection = true;
+        try
+        {
+            AppFilterComboBox.ItemsSource = null;
+            AppFilterComboBox.SelectedItem = null;
+        }
+        finally
+        {
+            _suppressAppSelection = false;
+        }
+    }
+
+    private void AppFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressAppSelection || _selectedRange != StatsManager.KeyboardHeatmapRange.Today ||
+            AppFilterComboBox.SelectedItem is not AppFilterOption option) return;
+
+        _selectedAppName = option.AppName;
+        App.CurrentApp?.TrackClick("keyboard_heatmap_app_filter", new Dictionary<string, object?>
+        {
+            ["scope"] = _selectedAppName == null ? "all" : "app"
+        });
+        RefreshData();
+    }
+
+    private void AppFilterComboBox_DropDownClosed(object? sender, EventArgs e)
+    {
+        if (!_suppressAppSelection) RefreshData();
     }
 
     private static string FormatHeatmapValue(double value, bool showDecimals)
@@ -282,6 +370,7 @@ public partial class KeyboardHeatmapWindow : Window
     {
         var isDaily = _selectedRange == StatsManager.KeyboardHeatmapRange.Today;
         var today = DateTime.Today;
+        AppFilterPanel.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;
         PrevDayButton.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;
         NextDayButton.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;
         DatePickerButton.Visibility = isDaily ? Visibility.Visible : Visibility.Collapsed;

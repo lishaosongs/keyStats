@@ -192,6 +192,11 @@
   <data name="Heatmap_NextDay" xml:space="preserve"><value>Next day</value></data>
   <data name="Heatmap_BackToToday" xml:space="preserve"><value>Today</value></data>
   <data name="Heatmap_NoData" xml:space="preserve"><value>No keyboard activity in the selected range</value></data>
+  <data name="Heatmap_AppFilter" xml:space="preserve"><value>Filter by app</value></data>
+  <data name="Heatmap_AllApps" xml:space="preserve"><value>All Apps</value></data>
+  <data name="Heatmap_AppOptionFormat" xml:space="preserve"><value>{0} · {1} keys</value></data>
+  <data name="Heatmap_NoAppData" xml:space="preserve"><value>No key distribution for this app yet</value></data>
+  <data name="Heatmap_AppFilterLocalOnly" xml:space="preserve"><value>App filter counts this device only</value></data>
   <data name="Heatmap_SummaryFormat" xml:space="preserve"><value>{0} key presses · {1} active keys</value></data>
   <data name="Heatmap_AverageSummaryFormat" xml:space="preserve"><value>Average {0} key presses/day · {1} active keys</value></data>
   <data name="Heatmap_DatePickerTooltip" xml:space="preserve"><value>Select date</value></data>

@@ -217,7 +217,7 @@ public class StatsManager : IDisposable
                 }
                 CurrentStats.KeyPressCounts[keyName]++;
             }
-            UpdateAppStats(appName, displayName, stats => stats.RecordKeyPress());
+            UpdateAppStats(appName, displayName, stats => stats.RecordKeyPress(keyName));
         }
 
         RecordKeyForPeakKPS();
@@ -995,21 +995,7 @@ public class StatsManager : IDisposable
             normalizedDate = fallbackDate.Date;
         }
 
-        var keyPressCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-        if (source?.KeyPressCounts != null)
-        {
-            foreach (var kvp in source.KeyPressCounts)
-            {
-                var key = (kvp.Key ?? string.Empty).Trim();
-                var count = Math.Max(0, kvp.Value);
-                if (string.IsNullOrWhiteSpace(key) || count <= 0)
-                {
-                    continue;
-                }
-
-                keyPressCounts[key] = count;
-            }
-        }
+        var keyPressCounts = NormalizeKeyPressCounts(source?.KeyPressCounts);
 
         var appStats = new Dictionary<string, AppStats>(StringComparer.OrdinalIgnoreCase);
         if (source?.AppStats != null)
@@ -1034,6 +1020,7 @@ public class StatsManager : IDisposable
                 appStats[appName] = new AppStats(appName, displayName)
                 {
                     KeyPresses = Math.Max(0, sourceStats.KeyPresses),
+                    KeyPressCounts = NormalizeKeyPressCounts(sourceStats.KeyPressCounts),
                     LeftClicks = Math.Max(0, sourceStats.LeftClicks),
                     RightClicks = Math.Max(0, sourceStats.RightClicks),
                     MiddleClicks = Math.Max(0, sourceStats.MiddleClicks),
@@ -1059,6 +1046,22 @@ public class StatsManager : IDisposable
             PeakCPS = Math.Max(0, source?.PeakCPS ?? 0),
             AppStats = appStats
         };
+    }
+
+    private static Dictionary<string, int> NormalizeKeyPressCounts(Dictionary<string, int>? source)
+    {
+        var normalized = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (source == null) return normalized;
+
+        foreach (var kvp in source)
+        {
+            var key = (kvp.Key ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(key) || kvp.Value <= 0) continue;
+
+            normalized[key] = SafeAdd(normalized.TryGetValue(key, out var current) ? current : 0, kvp.Value);
+        }
+
+        return normalized;
     }
 
     private static DailyStats MergeDailyStats(DailyStats existing, DailyStats incoming)
@@ -1094,6 +1097,7 @@ public class StatsManager : IDisposable
             }
 
             existingApp.KeyPresses += kvp.Value.KeyPresses;
+            MergeKeyCounts(kvp.Value.KeyPressCounts, existingApp.KeyPressCounts);
             existingApp.LeftClicks += kvp.Value.LeftClicks;
             existingApp.RightClicks += kvp.Value.RightClicks;
             existingApp.MiddleClicks += kvp.Value.MiddleClicks;
@@ -1403,6 +1407,8 @@ public class StatsManager : IDisposable
         public DateTime Date { get; set; }
         public int TotalKeyPresses { get; set; }
         public Dictionary<string, int> KeyCounts { get; set; } = new(StringComparer.Ordinal);
+        public List<AppStats> Apps { get; set; } = new();
+        public string? SelectedAppName { get; set; }
     }
 
     public sealed class KeyboardHeatmapSummary
@@ -1466,19 +1472,29 @@ public class StatsManager : IDisposable
         }
     }
 
-    public KeyboardHeatmapDay GetKeyboardHeatmapDay(DateTime date)
+    public KeyboardHeatmapDay GetKeyboardHeatmapDay(DateTime date, string? appName = null)
     {
         var normalizedDate = date.Date;
         lock (_lock)
         {
             var daily = GetDailyStats(normalizedDate);
-            var aggregated = AggregateKeyboardHeatmapCounts(daily.KeyPressCounts);
+            var apps = daily.AppStats.Values
+                .Where(app => app.KeyPresses > 0 || app.KeyPressCounts.Count > 0)
+                .OrderByDescending(app => app.KeyPresses)
+                .ThenBy(app => app.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(app => app.AppName, StringComparer.Ordinal)
+                .Select(app => new AppStats(app))
+                .ToList();
+            var selectedApp = apps.FirstOrDefault(app => string.Equals(app.AppName, appName, StringComparison.OrdinalIgnoreCase));
+            var aggregated = AggregateKeyboardHeatmapCounts(selectedApp?.KeyPressCounts ?? daily.KeyPressCounts);
 
             return new KeyboardHeatmapDay
             {
                 Date = normalizedDate,
-                TotalKeyPresses = Math.Max(0, daily.KeyPresses),
-                KeyCounts = aggregated
+                TotalKeyPresses = Math.Max(0, selectedApp?.KeyPresses ?? daily.KeyPresses),
+                KeyCounts = aggregated,
+                Apps = apps,
+                SelectedAppName = selectedApp?.AppName
             };
         }
     }
