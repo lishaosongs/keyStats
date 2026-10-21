@@ -11,7 +11,6 @@ Repo layout:
 - `KeyStats.Windows/` — Windows app, solution, packaging scripts, and `KeyStats.Sync.Tests`.
 - `contracts/sync/v1/` — wire-level source of truth for E2EE sync (JSON Schema, OpenAPI, fixtures).
 - `services/sync-worker/` — Cloudflare Worker backend (TypeScript, D1 + R2).
-- `scripts/` — Scoop publishing script.
 
 Detailed guidance:
 

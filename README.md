@@ -110,7 +110,6 @@ Debug 构建默认使用 staging 地址；Release 构建未提供 `SyncServiceBa
 KeyStats.Windows/       Windows 托盘应用（WPF，.NET Framework 4.8）及同步测试
 contracts/sync/v1/      E2EE 同步协议（JSON Schema、OpenAPI、fixtures）
 services/sync-worker/   E2EE 同步的 Cloudflare Worker 服务端
-scripts/                Scoop 发布脚本
 ```
 
 更多技术细节见 [`KeyStats.Windows/README.md`](./KeyStats.Windows/README.md) 和 [`CLAUDE.md`](./CLAUDE.md)。
