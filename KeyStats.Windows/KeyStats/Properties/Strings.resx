@@ -130,6 +130,8 @@
   <data name="Settings_CheckingUpdate" xml:space="preserve"><value>Checking…</value></data>
   <data name="Settings_UpdateUpToDate" xml:space="preserve"><value>You're up to date</value></data>
   <data name="Settings_UpdateCheckFailed" xml:space="preserve"><value>Couldn't check for updates. Please try again later.</value></data>
+  <data name="Settings_UpdateCheckFailedDetailFormat" xml:space="preserve"><value>Couldn't check for updates:
+{0}</value></data>
 
   <data name="Stats_TodayHeader" xml:space="preserve"><value>Today's Stats</value></data>
   <data name="Stats_KeyPresses" xml:space="preserve"><value>Key Presses</value></data>

@@ -391,9 +391,15 @@ public partial class SettingsWindow : Window
                 ShowUpdateStatus(KeyStats.Properties.Strings.Settings_UpdateUpToDate);
             }
         }
-        catch
+        catch (System.Exception ex)
         {
             ShowUpdateStatus(KeyStats.Properties.Strings.Settings_UpdateCheckFailed);
+            MessageBox.Show(
+                this,
+                string.Format(KeyStats.Properties.Strings.Settings_UpdateCheckFailedDetailFormat, ex.Message),
+                KeyStats.Properties.Strings.App_Name,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
         finally
         {

@@ -76,6 +76,7 @@ public static class Strings
     public static string Settings_CheckingUpdate => Get(nameof(Settings_CheckingUpdate));
     public static string Settings_UpdateUpToDate => Get(nameof(Settings_UpdateUpToDate));
     public static string Settings_UpdateCheckFailed => Get(nameof(Settings_UpdateCheckFailed));
+    public static string Settings_UpdateCheckFailedDetailFormat => Get(nameof(Settings_UpdateCheckFailedDetailFormat));
     public static string Settings_Sync => Get(nameof(Settings_Sync));
     public static string Settings_SyncDesc => Get(nameof(Settings_SyncDesc));
     public static string Settings_SyncUnavailable => Get(nameof(Settings_SyncUnavailable));

@@ -130,6 +130,8 @@
   <data name="Settings_CheckingUpdate" xml:space="preserve"><value>检查中…</value></data>
   <data name="Settings_UpdateUpToDate" xml:space="preserve"><value>已是最新版本</value></data>
   <data name="Settings_UpdateCheckFailed" xml:space="preserve"><value>检查更新失败，请稍后重试</value></data>
+  <data name="Settings_UpdateCheckFailedDetailFormat" xml:space="preserve"><value>检查更新失败：
+{0}</value></data>
 
   <data name="Stats_TodayHeader" xml:space="preserve"><value>今日统计</value></data>
   <data name="Stats_KeyPresses" xml:space="preserve"><value>按键次数</value></data>
