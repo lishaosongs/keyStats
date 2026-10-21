@@ -39,16 +39,24 @@ jobs:
         shell: pwsh
         working-directory: KeyStats.Windows
         run: |
-          if ($env:KEYSTATS_SYNC_SERVICE_URL -notmatch '^https://[A-Za-z0-9.-]+\.workers\.dev/?$') {
-            throw 'KEYSTATS_SYNC_PRODUCTION_URL must be a production workers.dev URL.'
+          $syncUrl = $env:KEYSTATS_SYNC_SERVICE_URL
+          if ([string]::IsNullOrWhiteSpace($syncUrl)) {
+            Write-Host 'Sync service URL not configured; building without sync networking.'
+            .\build.ps1 -Configuration Release
           }
-          .\build.ps1 -Configuration Release -SyncServiceBaseUrl $env:KEYSTATS_SYNC_SERVICE_URL
+          else {
+            if ($syncUrl -notmatch '^https://[A-Za-z0-9.-]+\.workers\.dev/?$') {
+              throw 'KEYSTATS_SYNC_PRODUCTION_URL must be a production workers.dev URL.'
+            }
+            .\build.ps1 -Configuration Release -SyncServiceBaseUrl $syncUrl
+          }
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-zip
           path: KeyStats.Windows/dist/*.zip
+          if-no-files-found: error
 
   create-release:
     needs: [build-windows]
@@ -70,51 +78,11 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: release-assets/windows/*.zip
+          fail_on_unmatched_files: true
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-beta') }}
-          make_latest: ${{ contains(github.ref_name, '-beta') && 'false' || 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Scoop Bucket
-        if: ${{ !contains(github.ref_name, '-beta') }}
-        env:
-          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-        run: |
-          VERSION="${{ needs.build-windows.outputs.version }}"
-          ZIP_NAME="KeyStats-Windows-${VERSION}.zip"
-          ZIP_PATH="release-assets/windows/${ZIP_NAME}"
-          SHA256=$(sha256sum "${ZIP_PATH}" | cut -d ' ' -f 1)
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${ZIP_NAME}"
-
-          cat > /tmp/keystats.json <<MANIFEST
-          {
-              "version": "${VERSION}",
-              "description": "Privacy-focused keyboard and mouse statistics tracker",
-              "homepage": "https://github.com/${{ github.repository }}",
-              "license": "MIT",
-              "url": "${DOWNLOAD_URL}",
-              "hash": "${SHA256}",
-              "shortcuts": [
-                  ["KeyStats.exe", "KeyStats"]
-              ],
-              "checkver": "github",
-              "autoupdate": {
-                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/KeyStats-Windows-\$version.zip"
-              }
-          }
-          MANIFEST
-
-          python3 -m json.tool /tmp/keystats.json > /dev/null
-
-          git clone https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/debugtheworldbot/scoop-keystats.git /tmp/scoop-keystats
-          cd /tmp/scoop-keystats
-          mkdir -p bucket
-          cp /tmp/keystats.json bucket/keystats.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/keystats.json
-          git diff --cached --quiet || (git commit -m "chore: update keystats to v${VERSION}" && git push origin main)
 
       - name: Verify Release
         run: echo "Release v${{ needs.build-windows.outputs.version }} created successfully"
