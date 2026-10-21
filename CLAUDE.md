@@ -107,3 +107,11 @@ Validate according to the change, not with a full regression every time. For syn
 - Do not automatically commit incomplete work, failed verification, or unrelated existing changes.
 - Use Conventional Commits style: `feat: ...`, `fix: ...`, `docs: ...`.
 - Commit on the current branch only; never push, force-push, amend, or rewrite history automatically.
+
+
+For multi-step tasks, act as the orchestrator: decompose the task,
+delegate execution to subagents running on claude-opus-5, review
+every subagent report, and decide the next step yourself. Do not
+write code directly in the main session. Brief each subagent with
+full context — the goal, relevant files, and what "done" looks
+like — and run independent subtasks in parallel.
