@@ -411,7 +411,6 @@
                                  Style="{StaticResource HeatmapSegmentedButton}"
                                  FontSize="11"
                                  Padding="10,4"
-                                 IsChecked="True"
                                  Checked="HeatmapMode_Checked"/>
                     <RadioButton x:Name="ModeSumButton"
                                  Tag="Sum"
@@ -420,6 +419,7 @@
                                  Style="{StaticResource HeatmapSegmentedButton}"
                                  FontSize="11"
                                  Padding="10,4"
+                                 IsChecked="True"
                                  Checked="HeatmapMode_Checked"/>
                 </StackPanel>
             </Border>

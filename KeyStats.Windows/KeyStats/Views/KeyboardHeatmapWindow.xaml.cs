@@ -47,7 +47,7 @@ public partial class KeyboardHeatmapWindow : Window
         }
     }
     private StatsManager.KeyboardHeatmapRange _selectedRange = StatsManager.KeyboardHeatmapRange.Today;
-    private StatsManager.KeyboardHeatmapMode _selectedMode = StatsManager.KeyboardHeatmapMode.Average;
+    private StatsManager.KeyboardHeatmapMode _selectedMode = StatsManager.KeyboardHeatmapMode.Sum;
 
     public KeyboardHeatmapWindow()
     {
