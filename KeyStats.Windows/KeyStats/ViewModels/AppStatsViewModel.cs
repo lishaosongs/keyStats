@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using KeyStats.Helpers;
 using KeyStats.Models;
 using KeyStats.Services;
@@ -38,6 +40,10 @@ public class AppStatsViewModel : ViewModelBase
 {
     private const double LabelInsideThreshold = 0.45;
 
+    private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+    private readonly BackgroundStatsRefresher<List<AppStats>> _refresher;
+    private readonly string _unknownAppLabel = KeyStats.Properties.Strings.AppStats_UnknownApp;
+    private AppStatsQuery _query = new(MapRange(0), SortMetric.Keys);
     private int _selectedRangeIndex;
     private SortMetric _sortMetric = SortMetric.Keys;
     private string _summaryText = "";
@@ -59,7 +65,8 @@ public class AppStatsViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedRangeIndex, value))
             {
-                RefreshData();
+                _query = new AppStatsQuery(MapRange(value), _sortMetric);
+                RequestRefresh(conditionsChanged: true);
             }
         }
     }
@@ -109,19 +116,41 @@ public class AppStatsViewModel : ViewModelBase
     public AppStatsViewModel()
     {
         SortCommand = new RelayCommand(OnSortRequested);
+        _refresher = new BackgroundStatsRefresher<List<AppStats>>(
+            PostToUi,
+            () => StatsManager.Instance.HistoryRevision,
+            ComputeAppStats,
+            ApplyAppStats);
+
         RefreshHeaders();
-        RefreshData();
+        RequestRefresh(conditionsChanged: true);
         StatsManager.Instance.StatsUpdateRequested += OnStatsUpdateRequested;
     }
 
     public void Cleanup()
     {
         StatsManager.Instance.StatsUpdateRequested -= OnStatsUpdateRequested;
+        _refresher.Close();
     }
 
     private void OnStatsUpdateRequested()
     {
-        Application.Current?.Dispatcher.Invoke(RefreshData);
+        PostToUi(() => _refresher.Request());
+    }
+
+    private Task PostToUi(Action action)
+    {
+        if (_dispatcher.HasShutdownStarted)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _dispatcher.BeginInvoke(DispatcherPriority.Background, action).Task;
+    }
+
+    private void RequestRefresh(bool conditionsChanged = false)
+    {
+        _refresher.Request(conditionsChanged);
     }
 
     private void OnSortRequested(object? parameter)
@@ -133,8 +162,9 @@ public class AppStatsViewModel : ViewModelBase
             "Scroll" => SortMetric.Scroll,
             _ => SortMetric.Keys
         };
+        _query = new AppStatsQuery(MapRange(_selectedRangeIndex), _sortMetric);
         RefreshHeaders();
-        RefreshData();
+        RequestRefresh(conditionsChanged: true);
     }
 
     private void RefreshHeaders()
@@ -151,32 +181,34 @@ public class AppStatsViewModel : ViewModelBase
         return _sortMetric == metric ? $"{baseText} {SortIndicator}" : baseText;
     }
 
-    private void RefreshData()
+    private List<AppStats> ComputeAppStats()
     {
-        var manager = StatsManager.Instance;
-        var range = SelectedRangeIndex switch
-        {
-            0 => StatsManager.AppStatsRange.Today,
-            1 => StatsManager.AppStatsRange.Week,
-            2 => StatsManager.AppStatsRange.Month,
-            3 => StatsManager.AppStatsRange.All,
-            _ => StatsManager.AppStatsRange.Today
-        };
+        var query = _query;
+        var range = query.Range;
+        var sortMetric = query.SortMetric;
 
-        var items = manager.GetAppStatsSummary(range)
+        var items = StatsManager.Instance.GetAppStatsSummary(range)
             .Where(a => a.HasActivity)
             .ToList();
 
         items.Sort((lhs, rhs) =>
         {
-            var lhsValue = SortValue(lhs);
-            var rhsValue = SortValue(rhs);
+            var lhsValue = SortValue(lhs, sortMetric);
+            var rhsValue = SortValue(rhs, sortMetric);
             if (lhsValue != rhsValue)
             {
                 return rhsValue.CompareTo(lhsValue);
             }
-            return string.Compare(DisplayName(lhs), DisplayName(rhs), StringComparison.OrdinalIgnoreCase);
+            return string.Compare(ResolveDisplayName(lhs, _unknownAppLabel), ResolveDisplayName(rhs, _unknownAppLabel),
+                StringComparison.OrdinalIgnoreCase);
         });
+
+        return items;
+    }
+
+    private void ApplyAppStats(List<AppStats> items)
+    {
+        var manager = StatsManager.Instance;
 
         var maxKeys = Math.Max(1, items.Select(a => a.KeyPresses).DefaultIfEmpty(0).Max());
         var maxClicks = Math.Max(1, items.Select(a => a.TotalClicks).DefaultIfEmpty(0).Max());
@@ -224,7 +256,9 @@ public class AppStatsViewModel : ViewModelBase
         HasData = !IsEmpty;
     }
 
-    private string DisplayName(AppStats stats)
+    private string DisplayName(AppStats stats) => ResolveDisplayName(stats, _unknownAppLabel);
+
+    private static string ResolveDisplayName(AppStats stats, string unknownAppLabel)
     {
         if (!string.IsNullOrWhiteSpace(stats.DisplayName))
         {
@@ -234,18 +268,42 @@ public class AppStatsViewModel : ViewModelBase
         {
             return stats.AppName;
         }
-        return KeyStats.Properties.Strings.AppStats_UnknownApp;
+        return unknownAppLabel;
     }
 
-    private double SortValue(AppStats stats)
+    private static double SortValue(AppStats stats, SortMetric sortMetric)
     {
-        return _sortMetric switch
+        return sortMetric switch
         {
             SortMetric.Keys => stats.KeyPresses,
             SortMetric.Clicks => stats.TotalClicks,
             SortMetric.Scroll => stats.ScrollDistance,
             _ => stats.KeyPresses
         };
+    }
+
+    private static StatsManager.AppStatsRange MapRange(int selectedRangeIndex) => selectedRangeIndex switch
+    {
+        0 => StatsManager.AppStatsRange.Today,
+        1 => StatsManager.AppStatsRange.Week,
+        2 => StatsManager.AppStatsRange.Month,
+        3 => StatsManager.AppStatsRange.All,
+        _ => StatsManager.AppStatsRange.Today
+    };
+
+    /// <summary>
+    /// Immutable query selection captured on the UI thread before a background computation starts.
+    /// </summary>
+    private sealed class AppStatsQuery
+    {
+        public AppStatsQuery(StatsManager.AppStatsRange range, SortMetric sortMetric)
+        {
+            Range = range;
+            SortMetric = sortMetric;
+        }
+
+        public StatsManager.AppStatsRange Range { get; }
+        public SortMetric SortMetric { get; }
     }
 
     private enum SortMetric

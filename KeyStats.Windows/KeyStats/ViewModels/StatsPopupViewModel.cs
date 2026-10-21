@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using KeyStats.Helpers;
 using KeyStats.Models;
 using KeyStats.Services;
@@ -35,8 +38,16 @@ public class ChartDataPoint
 
 public class StatsPopupViewModel : ViewModelBase
 {
+    private const int RefreshScopeLight = 0;
+    private const int RefreshScopeFull = 1;
+
     private bool _isActive = true;
     private bool _needsRefresh;
+    private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+    private readonly BackgroundStatsRefresher<PopupRefreshResult> _refresher;
+    private HistoryQuery _query = HistoryQuery.FromSelection(1, 0, 3);
+    private int _fullRequestStamp;
+    private int _fullAppliedStamp;
     private string _keyPresses = "0";
     private string _totalClicks = "0";
     private string _leftClicks = "0";
@@ -161,7 +172,8 @@ public class StatsPopupViewModel : ViewModelBase
                         _ => "unknown"
                     }
                 });
-                UpdateHistorySection();
+                UpdateQuery();
+                RequestRefresh(conditionsChanged: true);
             }
         }
     }
@@ -184,7 +196,8 @@ public class StatsPopupViewModel : ViewModelBase
                         _ => "unknown"
                     }
                 });
-                UpdateMouseTotals();
+                UpdateQuery();
+                RequestRefresh(conditionsChanged: true);
             }
         }
     }
@@ -207,7 +220,8 @@ public class StatsPopupViewModel : ViewModelBase
                         _ => "unknown"
                     }
                 });
-                UpdateHistorySection();
+                UpdateQuery();
+                RequestRefresh(conditionsChanged: true);
             }
         }
     }
@@ -223,7 +237,8 @@ public class StatsPopupViewModel : ViewModelBase
                 {
                     ["style"] = value == 0 ? "line" : "bar"
                 });
-                UpdateHistorySection();
+                UpdateQuery();
+                RequestRefresh(conditionsChanged: true);
             }
         }
     }
@@ -300,17 +315,31 @@ public class StatsPopupViewModel : ViewModelBase
     {
         QuitCommand = new RelayCommand(Quit);
 
-        UpdateStats();
-        UpdateKeyBreakdown();
-        UpdateAppStats();
-        UpdateHistorySection();
+        _refresher = new BackgroundStatsRefresher<PopupRefreshResult>(
+            PostToUi,
+            () => StatsManager.Instance.HistoryRevision,
+            ComputeRefresh,
+            ApplyRefresh);
+
+        RequestRefresh(RefreshScopeFull, conditionsChanged: true);
 
         StatsManager.Instance.StatsChanged += OnStatsChanged;
     }
 
+    private Task PostToUi(Action action)
+    {
+        if (_dispatcher.HasShutdownStarted)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _dispatcher.BeginInvoke(DispatcherPriority.Background, action).Task;
+    }
+
     private void OnStatsChanged(StatsManager.StatsUpdateKind updateKind)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        // Never block the notifying thread pool thread on the UI; merge bursts through the refresher.
+        PostToUi(() =>
         {
             if (!_isActive)
             {
@@ -318,14 +347,9 @@ public class StatsPopupViewModel : ViewModelBase
                 return;
             }
 
-            if (updateKind == StatsManager.StatsUpdateKind.MouseDistanceOnly)
-            {
-                UpdateStats();
-                UpdateHistorySection();
-                return;
-            }
-
-            RefreshAllSections();
+            RequestRefresh(updateKind == StatsManager.StatsUpdateKind.MouseDistanceOnly
+                ? RefreshScopeLight
+                : RefreshScopeFull);
         });
     }
 
@@ -334,22 +358,80 @@ public class StatsPopupViewModel : ViewModelBase
         _isActive = active;
         if (active && _needsRefresh)
         {
-            RefreshAllSections();
             _needsRefresh = false;
+            RequestRefresh(RefreshScopeFull);
         }
     }
 
-    private void RefreshAllSections()
+    private void UpdateQuery()
     {
-        UpdateStats();
-        UpdateKeyBreakdown();
-        UpdateAppStats();
-        UpdateHistorySection();
+        Volatile.Write(ref _query, HistoryQuery.FromSelection(
+            SelectedRangeIndex, SelectedMetricIndex, SelectedMouseTotalsRangeIndex));
     }
 
-    private void UpdateStats()
+    private void RequestRefresh(int scope = RefreshScopeLight, bool conditionsChanged = false)
     {
-        var stats = StatsManager.Instance.CurrentStats;
+        if (scope == RefreshScopeFull)
+        {
+            Interlocked.Increment(ref _fullRequestStamp);
+        }
+
+        _refresher.Request(conditionsChanged);
+    }
+
+    private PopupRefreshResult ComputeRefresh()
+    {
+        var manager = StatsManager.Instance;
+        var query = _query;
+        // The full scope stays pending until a result that includes the key breakdown and app
+        // list is actually applied, so a discarded or deferred result cannot lose that work.
+        var fullStamp = Volatile.Read(ref _fullRequestStamp);
+        var isFull = fullStamp != Volatile.Read(ref _fullAppliedStamp);
+
+        var result = new PopupRefreshResult
+        {
+            IsFull = isFull,
+            FullStamp = fullStamp,
+            Metric = query.Metric,
+            Today = manager.GetCurrentStatsCopy(),
+            HistoricalPeaks = manager.GetAllTimePeakRates(),
+            History = manager.GetHistoryTrendSeries(query.Range, query.Metric),
+            MouseTotals = manager.GetHistoryInputTotals(query.MouseTotalsRange)
+        };
+
+        if (isFull)
+        {
+            result.KeyBreakdown = manager.GetKeyPressBreakdownSorted();
+            result.Apps = manager.GetAppStatsSorted(int.MaxValue);
+        }
+
+        return result;
+    }
+
+    private void ApplyRefresh(PopupRefreshResult result)
+    {
+        if (!_isActive)
+        {
+            // Hidden: keep the data unapplied and refresh once the window is shown again.
+            _needsRefresh = true;
+            return;
+        }
+
+        ApplyTodayStats(result);
+        ApplyHistorySection(result);
+        ApplyMouseTotals(result);
+
+        if (result.IsFull)
+        {
+            ApplyKeyBreakdown(result.KeyBreakdown!);
+            ApplyAppStats(result.Apps!);
+            Interlocked.Exchange(ref _fullAppliedStamp, result.FullStamp);
+        }
+    }
+
+    private void ApplyTodayStats(PopupRefreshResult result)
+    {
+        var stats = result.Today;
         var manager = StatsManager.Instance;
 
         KeyPresses = stats.KeyPresses.ToString("N0");
@@ -362,20 +444,18 @@ public class StatsPopupViewModel : ViewModelBase
         IsSideClickRowVisible = (stats.SideBackClicks + stats.SideForwardClicks) > 0;
         MouseDistance = manager.FormatMouseDistance(stats.MouseDistance);
         ScrollDistance = stats.FormattedScrollDistance;
-        var historicalPeaks = manager.GetAllTimePeakRates();
         PeakKPS = string.Format(
             KeyStats.Properties.Strings.Stats_HistoricalPeakFormat,
             Math.Round(stats.PeakKPS, MidpointRounding.AwayFromZero).ToString("N0"),
-            Math.Round(historicalPeaks.PeakKPS, MidpointRounding.AwayFromZero).ToString("N0"));
+            Math.Round(result.HistoricalPeaks.PeakKPS, MidpointRounding.AwayFromZero).ToString("N0"));
         PeakCPS = string.Format(
             KeyStats.Properties.Strings.Stats_HistoricalPeakFormat,
             Math.Round(stats.PeakCPS, MidpointRounding.AwayFromZero).ToString("N0"),
-            Math.Round(historicalPeaks.PeakCPS, MidpointRounding.AwayFromZero).ToString("N0"));
+            Math.Round(result.HistoricalPeaks.PeakCPS, MidpointRounding.AwayFromZero).ToString("N0"));
     }
 
-    private void UpdateKeyBreakdown()
+    private void ApplyKeyBreakdown(List<(string Key, int Count)> items)
     {
-        var items = StatsManager.Instance.GetKeyPressBreakdownSorted();
         var manager = StatsManager.Instance;
 
         Column1Items.Clear();
@@ -408,10 +488,9 @@ public class StatsPopupViewModel : ViewModelBase
         }
     }
 
-    private void UpdateAppStats()
+    private void ApplyAppStats(List<AppStats> sortedApps)
     {
         var manager = StatsManager.Instance;
-        var sortedApps = manager.GetAppStatsSorted(int.MaxValue);
 
         AppStatsItems.Clear();
 
@@ -427,28 +506,10 @@ public class StatsPopupViewModel : ViewModelBase
         }
     }
 
-    private void UpdateHistorySection()
+    private void ApplyHistorySection(PopupRefreshResult result)
     {
-        var range = SelectedRangeIndex switch
-        {
-            0 => StatsManager.HistoryRange.ThreeDays,
-            1 => StatsManager.HistoryRange.Week,
-            2 => StatsManager.HistoryRange.Month,
-            3 => StatsManager.HistoryRange.All,
-            _ => StatsManager.HistoryRange.Week
-        };
-
-        var metric = SelectedMetricIndex switch
-        {
-            0 => StatsManager.HistoryMetric.Clicks,
-            1 => StatsManager.HistoryMetric.KeyPresses,
-            2 => StatsManager.HistoryMetric.MouseDistance,
-            3 => StatsManager.HistoryMetric.ScrollDistance,
-            _ => StatsManager.HistoryMetric.Clicks
-        };
-
         var manager = StatsManager.Instance;
-        var trendSeries = manager.GetHistoryTrendSeries(range, metric);
+        var trendSeries = result.History;
 
         ChartData = new ObservableCollection<ChartDataPoint>(
             trendSeries.Display.Select(point => new ChartDataPoint { Date = point.Date, Value = point.Value }));
@@ -458,22 +519,21 @@ public class StatsPopupViewModel : ViewModelBase
                 trendSeries.Local.Select(point => new ChartDataPoint { Date = point.Date, Value = point.Value }));
 
         var total = trendSeries.Display.Sum(x => x.Value);
-        var formatted = manager.FormatHistoryValue(metric, total);
+        var formatted = manager.FormatHistoryValue(result.Metric, total);
         HistorySummary = string.Format(KeyStats.Properties.Strings.History_TotalFormat, formatted);
-
-        UpdateMouseTotals();
     }
 
-    private void UpdateMouseTotals()
+    private void ApplyMouseTotals(PopupRefreshResult result)
     {
-        var totals = StatsManager.Instance.GetHistoryInputTotals(MapMouseTotalsRange(SelectedMouseTotalsRangeIndex));
-        HistoryLeftClicks = StatsManager.Instance.FormatNumber(totals.LeftClicks);
-        HistoryMiddleClicks = StatsManager.Instance.FormatNumber(totals.MiddleClicks);
-        HistoryRightClicks = StatsManager.Instance.FormatNumber(totals.RightClicks);
-        HistorySideBackClicks = StatsManager.Instance.FormatNumber(totals.SideBackClicks);
-        HistorySideForwardClicks = StatsManager.Instance.FormatNumber(totals.SideForwardClicks);
-        HistoryMouseDistance = StatsManager.Instance.FormatMouseDistance(totals.MouseDistance);
-        HistoryScrollDistance = StatsManager.Instance.FormatCalibratedDistance(totals.ScrollDistance);
+        var manager = StatsManager.Instance;
+        var totals = result.MouseTotals;
+        HistoryLeftClicks = manager.FormatNumber(totals.LeftClicks);
+        HistoryMiddleClicks = manager.FormatNumber(totals.MiddleClicks);
+        HistoryRightClicks = manager.FormatNumber(totals.RightClicks);
+        HistorySideBackClicks = manager.FormatNumber(totals.SideBackClicks);
+        HistorySideForwardClicks = manager.FormatNumber(totals.SideForwardClicks);
+        HistoryMouseDistance = manager.FormatMouseDistance(totals.MouseDistance);
+        HistoryScrollDistance = manager.FormatCalibratedDistance(totals.ScrollDistance);
     }
 
     private static StatsManager.MouseTotalsRange MapMouseTotalsRange(int index) => index switch
@@ -496,5 +556,72 @@ public class StatsPopupViewModel : ViewModelBase
     public void Cleanup()
     {
         StatsManager.Instance.StatsChanged -= OnStatsChanged;
+        _refresher.Close();
+    }
+
+    /// <summary>
+    /// Immutable query selection captured on the UI thread before a background computation starts.
+    /// </summary>
+    private sealed class HistoryQuery
+    {
+        private HistoryQuery(
+            StatsManager.HistoryRange range,
+            StatsManager.HistoryMetric metric,
+            StatsManager.MouseTotalsRange mouseTotalsRange)
+        {
+            Range = range;
+            Metric = metric;
+            MouseTotalsRange = mouseTotalsRange;
+        }
+
+        public StatsManager.HistoryRange Range { get; }
+        public StatsManager.HistoryMetric Metric { get; }
+        public StatsManager.MouseTotalsRange MouseTotalsRange { get; }
+
+        public static HistoryQuery FromSelection(int rangeIndex, int metricIndex, int mouseTotalsRangeIndex) =>
+            new(
+                rangeIndex switch
+                {
+                    0 => StatsManager.HistoryRange.ThreeDays,
+                    1 => StatsManager.HistoryRange.Week,
+                    2 => StatsManager.HistoryRange.Month,
+                    3 => StatsManager.HistoryRange.All,
+                    _ => StatsManager.HistoryRange.Week
+                },
+                metricIndex switch
+                {
+                    0 => StatsManager.HistoryMetric.Clicks,
+                    1 => StatsManager.HistoryMetric.KeyPresses,
+                    2 => StatsManager.HistoryMetric.MouseDistance,
+                    3 => StatsManager.HistoryMetric.ScrollDistance,
+                    _ => StatsManager.HistoryMetric.Clicks
+                },
+                MapMouseTotalsRange(mouseTotalsRangeIndex));
+    }
+
+    /// <summary>
+    /// Plain data produced off the UI thread; formatting, icons and collections are applied on the UI thread.
+    /// </summary>
+    private sealed class PopupRefreshResult
+    {
+        public bool IsFull { get; set; }
+        public int FullStamp { get; set; }
+        public StatsManager.HistoryMetric Metric { get; set; }
+        public DailyStats Today { get; set; } = new();
+        public (double PeakKPS, double PeakCPS) HistoricalPeaks { get; set; }
+        public StatsManager.HistoryTrendSeries History { get; set; } =
+            new(new List<(DateTime Date, double Value)>(), null);
+        public (
+            int LeftClicks,
+            int MiddleClicks,
+            int RightClicks,
+            int SideBackClicks,
+            int SideForwardClicks,
+            double MouseDistance,
+            double ScrollDistance
+        ) MouseTotals { get; set; }
+
+        public List<(string Key, int Count)>? KeyBreakdown { get; set; }
+        public List<AppStats>? Apps { get; set; }
     }
 }

@@ -124,4 +124,10 @@ public class AppSettings
 
     [JsonPropertyName("languagePreference")]
     public string LanguagePreference { get; set; } = "system";  // "system" | "zh-Hans" | "zh-Hant" | "en"
+
+    /// <summary>
+    /// Detached copy used when persisting settings: the fields are value types or immutable
+    /// strings, so the clone serializes to exactly the same JSON as the live instance.
+    /// </summary>
+    internal AppSettings Snapshot() => (AppSettings)MemberwiseClone();
 }

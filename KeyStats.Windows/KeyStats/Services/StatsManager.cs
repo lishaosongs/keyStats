@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Timers;
 using KeyStats.Models;
 using Timer = System.Timers.Timer;
@@ -72,9 +73,34 @@ public class StatsManager : IDisposable
     private bool _pendingMouseMoveUpdate;
     private bool _pendingSettingsSave;
     private volatile bool _isDisposed;
+    private volatile bool _shutdownFlushCompleted;
     private DisplayStatsAggregator? _displayStatsAggregator;
     private Func<bool>? _isSyncEnabledProvider;
     private Func<bool>? _isImportBlockedProvider;
+
+    // Save gate (created lazily, see SaveGate) and the history aggregate cache.
+    // All cache fields are read/written under _lock only.
+    private object? _saveGate;
+    private long _historyRevision;
+    private DisplayRemoteSnapshot? _remoteSnapshot;
+    private long _remoteSnapshotRevision = -1;
+    private DateTime _historyMinDay;
+    private long _historyMinDayRevision = -1;
+    private DateTime _historyMinDayToday;
+    private DateTime _historyMinDayStatisticsDay;
+    private bool _historyMinDayValid;
+    private DateTime _heatmapStart;
+    private long _heatmapStartRevision = -1;
+    private DateTime _heatmapStartToday;
+    private DateTime _heatmapStartStatisticsDay;
+    private bool _heatmapStartSyncEnabled;
+    private bool _heatmapStartValid;
+    private HistoryAggregateEntry<(double PeakKPS, double PeakCPS)>? _peakCache;
+    private Dictionary<KeyHistoryRange, HistoryAggregateEntry<Dictionary<string, int>>>? _keyHistoryCache;
+    private Dictionary<AppStatsRange, HistoryAggregateEntry<Dictionary<string, AppStats>>>? _appSummaryCache;
+    private Dictionary<KeyboardHeatmapRange, HistoryAggregateEntry<HeatmapTotals>>? _heatmapCache;
+    private Dictionary<(HistoryRange Range, HistoryMetric Metric), HistoryAggregateEntry<TrendSeriesTotals>>? _trendCache;
+    private Dictionary<MouseTotalsRange, HistoryAggregateEntry<InputTotals>>? _inputTotalsCache;
 
     // KPS/CPS peak tracking (1-second sliding window)
     private readonly Queue<DateTime> _recentKeyTimestamps = new();
@@ -203,11 +229,12 @@ public class StatsManager : IDisposable
 
     private void OnKeyPressed(string keyName, string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.KeyPresses++;
             if (!string.IsNullOrEmpty(keyName))
             {
@@ -220,6 +247,7 @@ public class StatsManager : IDisposable
             UpdateAppStats(appName, displayName, stats => stats.RecordKeyPress(keyName));
         }
 
+        if (dayChanged) CompleteDayRollover();
         RecordKeyForPeakKPS();
         NotifyStatsUpdate();
         NotifyKeyPressThresholdIfNeeded();
@@ -228,15 +256,17 @@ public class StatsManager : IDisposable
 
     private void OnLeftClick(string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.LeftClicks++;
             UpdateAppStats(appName, displayName, stats => stats.RecordLeftClick());
         }
 
+        if (dayChanged) CompleteDayRollover();
         RecordClickForPeakCPS();
         NotifyStatsUpdate();
         NotifyClickThresholdIfNeeded();
@@ -245,15 +275,17 @@ public class StatsManager : IDisposable
 
     private void OnRightClick(string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.RightClicks++;
             UpdateAppStats(appName, displayName, stats => stats.RecordRightClick());
         }
 
+        if (dayChanged) CompleteDayRollover();
         RecordClickForPeakCPS();
         NotifyStatsUpdate();
         NotifyClickThresholdIfNeeded();
@@ -262,15 +294,17 @@ public class StatsManager : IDisposable
 
     private void OnMiddleClick(string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.MiddleClicks++;
             UpdateAppStats(appName, displayName, stats => stats.RecordMiddleClick());
         }
 
+        if (dayChanged) CompleteDayRollover();
         RecordClickForPeakCPS();
         NotifyStatsUpdate();
         NotifyClickThresholdIfNeeded();
@@ -279,15 +313,17 @@ public class StatsManager : IDisposable
 
     private void OnSideBackClick(string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.SideBackClicks++;
             UpdateAppStats(appName, displayName, stats => stats.RecordSideBackClick());
         }
 
+        if (dayChanged) CompleteDayRollover();
         RecordClickForPeakCPS();
         NotifyStatsUpdate();
         NotifyClickThresholdIfNeeded();
@@ -296,15 +332,17 @@ public class StatsManager : IDisposable
 
     private void OnSideForwardClick(string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.SideForwardClicks++;
             UpdateAppStats(appName, displayName, stats => stats.RecordSideForwardClick());
         }
 
+        if (dayChanged) CompleteDayRollover();
         RecordClickForPeakCPS();
         NotifyStatsUpdate();
         NotifyClickThresholdIfNeeded();
@@ -313,36 +351,54 @@ public class StatsManager : IDisposable
 
     private void OnMouseMoved(double distance)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.MouseDistance += distance;
         }
 
+        if (dayChanged) CompleteDayRollover();
         ScheduleMouseMoveIdleUpdate();
         ScheduleSave();
     }
 
     private void OnMouseScrolled(double distance, string appName, string displayName)
     {
+        bool dayChanged;
         lock (_lock)
         {
             if (_isDisposed) return;
 
-            EnsureCurrentDay();
+            dayChanged = EnsureCurrentDayLocked();
             CurrentStats.ScrollDistance += Math.Abs(distance);
             UpdateAppStats(appName, displayName, stats => stats.AddScrollDistance(Math.Abs(distance)));
         }
 
+        if (dayChanged) CompleteDayRollover();
         ScheduleDebouncedStatsUpdate();
         ScheduleSave();
     }
 
-    private void EnsureCurrentDay()
+    /// <summary>
+    /// Rolls the counters over to today when they are held with <see cref="_lock"/> already taken.
+    /// Callers must persist/notify through <see cref="CompleteDayRollover"/> after releasing the lock
+    /// so a save never waits for the gate while the statistics lock is held.
+    /// </summary>
+    private bool EnsureCurrentDayLocked()
     {
-        SynchronizeCurrentDay(DateTime.Today, notifyStatsUpdate: true);
+        return RolloverToDateLocked(DateTime.Today);
+    }
+
+    private void CompleteDayRollover()
+    {
+        NotifyStatsUpdate();
+        SaveStats();
+        // Persist History too — past-day data just changed (today's counters were
+        // archived and possibly missing days were back-filled).
+        SaveHistory();
     }
 
     private void RecordKeyForPeakKPS()
@@ -582,42 +638,101 @@ public class StatsManager : IDisposable
         Func<bool> isSyncEnabledProvider,
         Func<bool>? isImportBlockedProvider = null)
     {
-        _displayStatsAggregator = aggregator;
-        _isSyncEnabledProvider = isSyncEnabledProvider;
-        _isImportBlockedProvider = isImportBlockedProvider ?? isSyncEnabledProvider;
+        lock (_lock)
+        {
+            _displayStatsAggregator = aggregator;
+            _isSyncEnabledProvider = isSyncEnabledProvider;
+            _isImportBlockedProvider = isImportBlockedProvider ?? isSyncEnabledProvider;
+            InvalidateHistoryAggregatesLocked();
+        }
+
         NotifyStatsUpdate();
     }
 
     public void NotifyRemoteStatsChanged()
     {
+        lock (_lock)
+        {
+            InvalidateHistoryAggregatesLocked();
+        }
+
         NotifyStatsUpdate();
     }
 
     #region Persistence
 
+    /// <summary>
+    /// Single save gate. Acquired before the statistics lock so serialization and disk
+    /// writes never block counters; the snapshot itself is still taken under <see cref="_lock"/>.
+    /// The gate is created lazily so tests that build instances through
+    /// <see cref="System.Runtime.Serialization.FormatterServices"/> keep working.
+    /// </summary>
+    private object SaveGate
+    {
+        get
+        {
+            var gate = _saveGate;
+            if (gate != null)
+            {
+                return gate;
+            }
+
+            Interlocked.CompareExchange(ref _saveGate, new object(), null);
+            return _saveGate!;
+        }
+    }
+
     private void SaveStats()
     {
+        // Fast path without the gate; re-checked under the gate because a save that passed the
+        // check can still be queued behind the shutdown flush.
+        if (_shutdownFlushCompleted) return;
+
+        lock (SaveGate)
+        {
+            if (_shutdownFlushCompleted) return;
+            WriteStatsSnapshot();
+        }
+    }
+
+    private void WriteStatsSnapshot()
+    {
+        DailyStats statsSnapshot;
         lock (_lock)
         {
-            var statsSnapshot = CloneDailyStats(CurrentStats, CurrentStats.Date.Date);
             // Mirror today's counters into the in-memory History dict so query paths
             // that read from History stay in sync. The history *file* is no longer
             // re-written here — past-day data only changes at day rollover / import /
             // reset / shutdown, so writing it every 2s is wasted I/O.
             RecordCurrentStatsToHistory();
-            // Serialize snapshot creation and file replacement together, including
-            // timer, rollover and shutdown saves, so older snapshots cannot win.
-            WriteJsonDurable(_statsFilePath, statsSnapshot, "stats");
+            statsSnapshot = CloneDailyStats(CurrentStats, CurrentStats.Date.Date);
         }
+
+        // Serialize and replace outside the statistics lock: older snapshots cannot win
+        // because the whole operation is serialized by the save gate.
+        WriteJsonDurable(_statsFilePath, statsSnapshot, "stats");
     }
 
     private void SaveHistory()
     {
+        if (_shutdownFlushCompleted) return;
+
+        lock (SaveGate)
+        {
+            if (_shutdownFlushCompleted) return;
+            WriteHistorySnapshot();
+        }
+    }
+
+    private void WriteHistorySnapshot()
+    {
+        Dictionary<string, DailyStats> snapshot;
         lock (_lock)
         {
-            var snapshot = CloneHistorySnapshot(History);
-            WriteJsonDurable(_historyFilePath, snapshot, "history");
+            snapshot = CloneHistorySnapshot(History);
         }
+
+        WriteJsonDurable(_historyFilePath, snapshot, "history");
     }
 
     private DailyStats? LoadStats()
@@ -723,10 +838,24 @@ public class StatsManager : IDisposable
 
     private void FlushSettings()
     {
+        if (_shutdownFlushCompleted) return;
+
+        lock (SaveGate)
+        {
+            if (_shutdownFlushCompleted) return;
+            WriteSettingsSnapshot();
+        }
+    }
+
+    private void WriteSettingsSnapshot()
+    {
+        AppSettings snapshot;
         lock (_lock)
         {
-            WriteJsonDurable(_settingsFilePath, Settings, "settings");
+            snapshot = Settings.Snapshot();
         }
+
+        WriteJsonDurable(_settingsFilePath, snapshot, "settings");
     }
 
     private AppSettings LoadSettings()
@@ -932,6 +1061,7 @@ public class StatsManager : IDisposable
                 : new DailyStats(DateTime.Today);
 
             UpdateNotificationBaselines();
+            InvalidateHistoryAggregatesLocked();
         }
 
         SaveStats();
@@ -1200,6 +1330,7 @@ public class StatsManager : IDisposable
 
             // Then create a fresh stats object for the new day.
             CurrentStats = new DailyStats(date);
+            InvalidateHistoryAggregatesLocked();
         }
 
         SaveHistory();
@@ -1211,40 +1342,10 @@ public class StatsManager : IDisposable
 
     private void SynchronizeCurrentDay(DateTime targetDate, bool notifyStatsUpdate)
     {
-        var normalizedTargetDate = targetDate.Date;
-        var changed = false;
-
+        bool changed;
         lock (_lock)
         {
-            var currentDate = CurrentStats.Date.Date;
-            if (currentDate == normalizedTargetDate)
-            {
-                return;
-            }
-
-            History[currentDate.ToString("yyyy-MM-dd")] = CloneDailyStats(CurrentStats, currentDate);
-
-            if (currentDate < normalizedTargetDate)
-            {
-                var missingDayCount = (normalizedTargetDate - currentDate).Days - 1;
-                if (missingDayCount > 0 && missingDayCount <= MaxMissingDayBackfillDays)
-                {
-                    for (var missingDate = currentDate.AddDays(1); missingDate < normalizedTargetDate; missingDate = missingDate.AddDays(1))
-                    {
-                        var key = missingDate.ToString("yyyy-MM-dd");
-                        if (!History.ContainsKey(key))
-                        {
-                            History[key] = new DailyStats(missingDate);
-                        }
-                    }
-                }
-            }
-
-            CurrentStats = new DailyStats(normalizedTargetDate);
-            _recentKeyTimestamps.Clear();
-            _recentClickTimestamps.Clear();
-            UpdateNotificationBaselines();
-            changed = true;
+            changed = RolloverToDateLocked(targetDate.Date);
         }
 
         if (!changed)
@@ -1261,6 +1362,45 @@ public class StatsManager : IDisposable
         // Persist History too — past-day data just changed (today's counters were
         // archived and possibly missing days were back-filled).
         SaveHistory();
+    }
+
+    /// <summary>
+    /// Applies the cross-day rollover. Must be called with <see cref="_lock"/> held so the
+    /// archive-and-reset stays atomic with respect to input handlers; the caller performs
+    /// notification and persistence after releasing the lock.
+    /// </summary>
+    private bool RolloverToDateLocked(DateTime normalizedTargetDate)
+    {
+        var currentDate = CurrentStats.Date.Date;
+        if (currentDate == normalizedTargetDate)
+        {
+            return false;
+        }
+
+        History[currentDate.ToString("yyyy-MM-dd")] = CloneDailyStats(CurrentStats, currentDate);
+
+        if (currentDate < normalizedTargetDate)
+        {
+            var missingDayCount = (normalizedTargetDate - currentDate).Days - 1;
+            if (missingDayCount > 0 && missingDayCount <= MaxMissingDayBackfillDays)
+            {
+                for (var missingDate = currentDate.AddDays(1); missingDate < normalizedTargetDate; missingDate = missingDate.AddDays(1))
+                {
+                    var key = missingDate.ToString("yyyy-MM-dd");
+                    if (!History.ContainsKey(key))
+                    {
+                        History[key] = new DailyStats(missingDate);
+                    }
+                }
+            }
+        }
+
+        CurrentStats = new DailyStats(normalizedTargetDate);
+        _recentKeyTimestamps.Clear();
+        _recentClickTimestamps.Clear();
+        UpdateNotificationBaselines();
+        InvalidateHistoryAggregatesLocked();
+        return true;
     }
 
     #endregion
@@ -1340,23 +1480,113 @@ public class StatsManager : IDisposable
         }
     }
 
-    public (double PeakKPS, double PeakCPS) GetAllTimePeakRates()
+    /// <summary>
+    /// Returns a detached copy of today's statistics (including per-key and per-app counts)
+    /// so background aggregation never reads counters that are being mutated.
+    /// </summary>
+    public DailyStats GetCurrentStatsCopy()
     {
         lock (_lock)
         {
-            var peakKPS = CurrentStats.PeakKPS;
-            var peakCPS = CurrentStats.PeakCPS;
-            var today = DateTime.Today;
+            return CloneDailyStats(CurrentStats, CurrentStats.Date.Date);
+        }
+    }
 
-            foreach (var stats in History.Values)
+    /// <summary>
+    /// Monotonic revision of the immutable history view. It advances on day rollover, import,
+    /// reset, remote-data changes and sync display configuration changes, but not on ordinary
+    /// counter updates, so background refreshes can discard results computed across a change.
+    /// </summary>
+    public long HistoryRevision
+    {
+        get
+        {
+            lock (_lock)
             {
-                if (stats.Date.Date > today) continue;
+                return _historyRevision;
+            }
+        }
+    }
+
+    private void InvalidateHistoryAggregatesLocked()
+    {
+        _historyRevision++;
+        _remoteSnapshot = null;
+        _remoteSnapshotRevision = -1;
+        _historyMinDayValid = false;
+        _heatmapStartValid = false;
+        _peakCache = null;
+        _keyHistoryCache = null;
+        _appSummaryCache = null;
+        _heatmapCache = null;
+        _trendCache = null;
+        _inputTotalsCache = null;
+    }
+
+    public (double PeakKPS, double PeakCPS) GetAllTimePeakRates()
+    {
+        var today = DateTime.Today;
+        HistoryAggregateStamp stamp;
+        (double PeakKPS, double PeakCPS) stablePeaks;
+        var stableDays = new List<DailyStats>();
+        (double PeakKPS, double PeakCPS) live;
+        bool cached;
+
+        // Stamp, live peaks and immutable history references are taken together so an import or
+        // rollover cannot bind a newer history to an older stamp.
+        lock (_lock)
+        {
+            stamp = CaptureStampLocked(today);
+            cached = TryGetCachedAggregate(_peakCache, stamp, out stablePeaks);
+            live = ComputeLivePeaksLocked(today, stamp.StatisticsDay);
+
+            if (!cached)
+            {
+                foreach (var stats in History.Values)
+                {
+                    var date = stats.Date.Date;
+                    if (date <= today && date < stamp.StatisticsDay)
+                    {
+                        stableDays.Add(stats);
+                    }
+                }
+            }
+        }
+
+        if (!cached)
+        {
+            double peakKPS = 0;
+            double peakCPS = 0;
+            foreach (var stats in stableDays)
+            {
                 peakKPS = Math.Max(peakKPS, stats.PeakKPS);
                 peakCPS = Math.Max(peakCPS, stats.PeakCPS);
             }
 
-            return (peakKPS, peakCPS);
+            stablePeaks = (peakKPS, peakCPS);
+            PublishAggregate(ref _peakCache, stamp, stablePeaks);
         }
+
+        return (Math.Max(stablePeaks.PeakKPS, live.PeakKPS), Math.Max(stablePeaks.PeakCPS, live.PeakCPS));
+    }
+
+    /// <summary>Today's live peaks plus any archived day from the statistics day onward.</summary>
+    private (double PeakKPS, double PeakCPS) ComputeLivePeaksLocked(DateTime today, DateTime statisticsDay)
+    {
+        var peakKPS = CurrentStats.PeakKPS;
+        var peakCPS = CurrentStats.PeakCPS;
+        for (var date = statisticsDay; date <= today; date = date.AddDays(1))
+        {
+            if (!History.TryGetValue(date.ToString("yyyy-MM-dd"), out var stats))
+            {
+                continue;
+            }
+
+            peakKPS = Math.Max(peakKPS, stats.PeakKPS);
+            peakCPS = Math.Max(peakCPS, stats.PeakCPS);
+        }
+
+        return (peakKPS, peakCPS);
     }
 
     public List<(string Key, int Count)> GetKeyPressBreakdownSorted()
@@ -1419,56 +1649,53 @@ public class StatsManager : IDisposable
 
     public List<AppStats> GetAppStatsSummary(AppStatsRange range)
     {
-        lock (_lock)
-        {
-            var totals = new Dictionary<string, AppStats>(StringComparer.OrdinalIgnoreCase);
-            var dates = GetAppStatsDates(range);
-            foreach (var date in dates)
-            {
-                var daily = GetDailyStats(date);
-                MergeAppStats(daily, totals);
-            }
+        var stable = GetHistoryAggregate(
+            ref _appSummaryCache,
+            range,
+            today => GetAppStatsDates(range, today),
+            today => range == AppStatsRange.All
+                ? SelectLiveHistoryKeyDates(today, includeRemoteDays: false)
+                : LiveDatesFrom(AppStatsRangeStart(range, today), today),
+            AggregateAppStatsTotals,
+            out var capture);
 
-            return totals.Values
-                .Select(a => new AppStats(a))
-                .ToList();
+        var totals = new Dictionary<string, AppStats>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in stable)
+        {
+            totals[kvp.Key] = new AppStats(kvp.Value);
         }
+
+        foreach (var day in capture.LiveDays)
+        {
+            MergeAppStats(ResolveDay(capture, day), totals);
+        }
+
+        return totals.Values
+            .Select(a => new AppStats(a))
+            .ToList();
+    }
+
+    private static Dictionary<string, AppStats> AggregateAppStatsTotals(HistoryAggregateCapture capture)
+    {
+        var totals = new Dictionary<string, AppStats>(StringComparer.OrdinalIgnoreCase);
+        foreach (var day in capture.StableDays)
+        {
+            MergeAppStats(ResolveDay(capture, day), totals);
+        }
+
+        return totals;
     }
 
     public (DateTime Start, DateTime End) GetKeyboardHeatmapDateBounds()
     {
+        return GetKeyboardHeatmapDateBounds(DateTime.Today);
+    }
+
+    private (DateTime Start, DateTime End) GetKeyboardHeatmapDateBounds(DateTime today)
+    {
         lock (_lock)
         {
-            var today = DateTime.Today;
-            var start = today;
-
-            var currentDate = CurrentStats.Date.Date;
-            if (currentDate <= today)
-            {
-                start = currentDate;
-            }
-
-            foreach (var daily in History.Values)
-            {
-                var candidate = daily.Date.Date;
-                if (candidate <= today && candidate < start)
-                {
-                    start = candidate;
-                }
-            }
-
-            if (_displayStatsAggregator != null && _isSyncEnabledProvider?.Invoke() == true)
-            {
-                foreach (var candidate in _displayStatsAggregator.GetRemoteDays())
-                {
-                    if (candidate <= today && candidate < start)
-                    {
-                        start = candidate;
-                    }
-                }
-            }
-
-            return (start, today);
+            return (GetHeatmapStartLocked(today), today);
         }
     }
 
@@ -1503,49 +1730,79 @@ public class StatsManager : IDisposable
         KeyboardHeatmapRange range,
         KeyboardHeatmapMode mode)
     {
-        lock (_lock)
+        var stable = GetHistoryAggregate(
+            ref _heatmapCache,
+            range,
+            today => GetKeyboardHeatmapDates(range, today),
+            today => LiveDatesFrom(
+                range == KeyboardHeatmapRange.All ? GetHeatmapStartLocked(today) : KeyboardHeatmapRangeStart(range, today),
+                today),
+            AggregateHeatmapTotals,
+            out var capture);
+
+        var totalKeyPresses = stable.TotalKeyPresses;
+        var keyCounts = new Dictionary<string, double>(stable.KeyCounts, StringComparer.Ordinal);
+        var dayCount = stable.DayCount;
+
+        foreach (var day in capture.LiveDays)
         {
-            var dates = GetKeyboardHeatmapDates(range);
-            var totalKeyPresses = 0.0;
-            var keyCounts = new Dictionary<string, double>(StringComparer.Ordinal);
+            var daily = ResolveDay(capture, day);
+            totalKeyPresses += Math.Max(0, daily.KeyPresses);
 
-            foreach (var date in dates)
+            foreach (var keyValue in AggregateKeyboardHeatmapCounts(daily.KeyPressCounts))
             {
-                var daily = GetDailyStats(date);
-                totalKeyPresses += Math.Max(0, daily.KeyPresses);
-
-                foreach (var keyValue in AggregateKeyboardHeatmapCounts(daily.KeyPressCounts))
-                {
-                    keyCounts[keyValue.Key] = (keyCounts.TryGetValue(keyValue.Key, out var current) ? current : 0) + keyValue.Value;
-                }
+                keyCounts[keyValue.Key] = (keyCounts.TryGetValue(keyValue.Key, out var current) ? current : 0) + keyValue.Value;
             }
 
-            if (mode == KeyboardHeatmapMode.Average && dates.Count > 0)
-            {
-                totalKeyPresses /= dates.Count;
-                foreach (var key in keyCounts.Keys.ToList())
-                {
-                    keyCounts[key] /= dates.Count;
-                }
-            }
-
-            return new KeyboardHeatmapSummary
-            {
-                TotalKeyPresses = totalKeyPresses,
-                KeyCounts = keyCounts
-            };
+            dayCount++;
         }
+
+        if (mode == KeyboardHeatmapMode.Average && dayCount > 0)
+        {
+            totalKeyPresses /= dayCount;
+            foreach (var key in keyCounts.Keys.ToList())
+            {
+                keyCounts[key] /= dayCount;
+            }
+        }
+
+        return new KeyboardHeatmapSummary
+        {
+            TotalKeyPresses = totalKeyPresses,
+            KeyCounts = keyCounts
+        };
     }
 
-    private List<DateTime> GetKeyboardHeatmapDates(KeyboardHeatmapRange range)
+    private static HeatmapTotals AggregateHeatmapTotals(HistoryAggregateCapture capture)
     {
-        var today = DateTime.Today;
+        var totalKeyPresses = 0.0;
+        var keyCounts = new Dictionary<string, double>(StringComparer.Ordinal);
+        var dayCount = 0;
+
+        foreach (var day in capture.StableDays)
+        {
+            var daily = ResolveDay(capture, day);
+            totalKeyPresses += Math.Max(0, daily.KeyPresses);
+
+            foreach (var keyValue in AggregateKeyboardHeatmapCounts(daily.KeyPressCounts))
+            {
+                keyCounts[keyValue.Key] = (keyCounts.TryGetValue(keyValue.Key, out var current) ? current : 0) + keyValue.Value;
+            }
+
+            dayCount++;
+        }
+
+        return new HeatmapTotals(totalKeyPresses, keyCounts, dayCount);
+    }
+
+    private List<DateTime> GetKeyboardHeatmapDates(KeyboardHeatmapRange range, DateTime today)
+    {
         var startDate = range switch
         {
             KeyboardHeatmapRange.Today => today,
             KeyboardHeatmapRange.Week => today.AddDays(-6),
             KeyboardHeatmapRange.Month => today.AddDays(-29),
-            KeyboardHeatmapRange.All => GetKeyboardHeatmapDateBounds().Start.Date,
+            KeyboardHeatmapRange.All => GetKeyboardHeatmapDateBounds(today).Start.Date,
             _ => today
         };
 
@@ -1558,9 +1815,8 @@ public class StatsManager : IDisposable
         return dates;
     }
 
-    private List<DateTime> GetAppStatsDates(AppStatsRange range)
+    private List<DateTime> GetAppStatsDates(AppStatsRange range, DateTime today)
     {
-        var today = DateTime.Today;
         var dates = new List<DateTime>();
 
         if (range == AppStatsRange.All)
@@ -1595,6 +1851,10 @@ public class StatsManager : IDisposable
         return dates;
     }
 
+    /// <summary>
+    /// Single-date read used by the per-day heatmap view. Multi-day queries capture one
+    /// <see cref="DisplayRemoteSnapshot"/> and go through <see cref="ResolveDay"/> instead.
+    /// </summary>
     private DailyStats GetDailyStats(DateTime date)
     {
         var local = GetLocalDailyStats(date);
@@ -1876,6 +2136,496 @@ public class StatsManager : IDisposable
 
     #endregion
 
+    #region History aggregate cache
+
+    /// <summary>
+    /// Identifies the immutable part of the history view: the monotonic revision plus the
+    /// statistics day, the wall-clock day the query ranges were derived from, and whether
+    /// remote data currently contributes. Entries whose stamp no longer matches are ignored.
+    /// </summary>
+    private readonly struct HistoryAggregateStamp
+    {
+        public HistoryAggregateStamp(long revision, DateTime statisticsDay, DateTime today, bool syncEnabled)
+        {
+            Revision = revision;
+            StatisticsDay = statisticsDay;
+            Today = today;
+            SyncEnabled = syncEnabled;
+        }
+
+        public long Revision { get; }
+        public DateTime StatisticsDay { get; }
+        public DateTime Today { get; }
+        public bool SyncEnabled { get; }
+
+        public bool Matches(HistoryAggregateStamp other) =>
+            Revision == other.Revision &&
+            StatisticsDay == other.StatisticsDay &&
+            Today == other.Today &&
+            SyncEnabled == other.SyncEnabled;
+    }
+
+    private sealed class HistoryAggregateEntry<T>
+    {
+        public HistoryAggregateEntry(HistoryAggregateStamp stamp, T value)
+        {
+            Stamp = stamp;
+            Value = value;
+        }
+
+        public HistoryAggregateStamp Stamp { get; }
+        public T Value { get; }
+    }
+
+    private sealed class HistoryAggregateCapture
+    {
+        public HistoryAggregateCapture(
+            HistoryAggregateStamp stamp,
+            DisplayStatsAggregator? aggregator,
+            DisplayRemoteSnapshot remote,
+            List<(DateTime Date, DailyStats Stats)> stableDays,
+            List<(DateTime Date, DailyStats Stats)> liveDays)
+        {
+            Stamp = stamp;
+            Aggregator = aggregator;
+            Remote = remote;
+            StableDays = stableDays;
+            LiveDays = liveDays;
+        }
+
+        public HistoryAggregateStamp Stamp { get; }
+        public DisplayStatsAggregator? Aggregator { get; }
+        public DisplayRemoteSnapshot Remote { get; }
+
+        /// <summary>Days strictly before the statistics day: immutable until a revision bump.</summary>
+        public List<(DateTime Date, DailyStats Stats)> StableDays { get; }
+
+        /// <summary>Days at or after the statistics day: re-read on every query.</summary>
+        public List<(DateTime Date, DailyStats Stats)> LiveDays { get; }
+    }
+
+    private readonly struct HeatmapTotals
+    {
+        public HeatmapTotals(double totalKeyPresses, Dictionary<string, double> keyCounts, int dayCount)
+        {
+            TotalKeyPresses = totalKeyPresses;
+            KeyCounts = keyCounts;
+            DayCount = dayCount;
+        }
+
+        public double TotalKeyPresses { get; }
+        public Dictionary<string, double> KeyCounts { get; }
+        public int DayCount { get; }
+    }
+
+    private readonly struct TrendSeriesTotals
+    {
+        public TrendSeriesTotals(
+            List<(DateTime Date, double Value)> local,
+            List<(DateTime Date, double Value)>? display)
+        {
+            Local = local;
+            Display = display;
+        }
+
+        public List<(DateTime Date, double Value)> Local { get; }
+        public List<(DateTime Date, double Value)>? Display { get; }
+    }
+
+    private readonly struct InputTotals
+    {
+        public InputTotals(
+            int leftClicks,
+            int middleClicks,
+            int rightClicks,
+            int sideBackClicks,
+            int sideForwardClicks,
+            double mouseDistance,
+            double scrollDistance)
+        {
+            LeftClicks = leftClicks;
+            MiddleClicks = middleClicks;
+            RightClicks = rightClicks;
+            SideBackClicks = sideBackClicks;
+            SideForwardClicks = sideForwardClicks;
+            MouseDistance = mouseDistance;
+            ScrollDistance = scrollDistance;
+        }
+
+        public int LeftClicks { get; }
+        public int MiddleClicks { get; }
+        public int RightClicks { get; }
+        public int SideBackClicks { get; }
+        public int SideForwardClicks { get; }
+        public double MouseDistance { get; }
+        public double ScrollDistance { get; }
+    }
+
+    private HistoryAggregateStamp CaptureStampLocked(DateTime today) =>
+        new(
+            _historyRevision,
+            CurrentStats.Date.Date,
+            today.Date,
+            _isSyncEnabledProvider?.Invoke() == true && _displayStatsAggregator != null);
+
+    private bool IsStampCurrentLocked(HistoryAggregateStamp stamp) =>
+        stamp.Today == DateTime.Today.Date && stamp.Matches(CaptureStampLocked(stamp.Today));
+
+    /// <summary>
+    /// Serves a cached aggregate for the stable part of the range and only reads the days at or
+    /// after the statistics day on a hit. <paramref name="selectLiveDates"/> must return a
+    /// bounded window (the live days plus the ones a range adds) instead of walking the whole
+    /// history, so repeated refreshes never rescan or re-aggregate past days.
+    /// </summary>
+    private T GetHistoryAggregate<TKey, T>(
+        ref Dictionary<TKey, HistoryAggregateEntry<T>>? cache,
+        TKey key,
+        Func<DateTime, List<DateTime>> selectDates,
+        Func<DateTime, List<DateTime>> selectLiveDates,
+        Func<HistoryAggregateCapture, T> build,
+        out HistoryAggregateCapture capture)
+        where TKey : notnull
+    {
+        var today = DateTime.Today;
+        HistoryAggregateStamp stamp;
+        DisplayStatsAggregator? aggregator;
+        T cachedValue = default!;
+        bool hit;
+        var stableDays = new List<(DateTime Date, DailyStats Stats)>();
+        var liveDays = new List<(DateTime Date, DailyStats Stats)>();
+
+        // The stamp and the day inputs are taken under one lock: a rollover or import in between
+        // could otherwise bind new history to an older stamp.
+        lock (_lock)
+        {
+            stamp = CaptureStampLocked(today);
+            hit = TryGetCachedAggregate(cache, key, stamp, out cachedValue);
+            aggregator = stamp.SyncEnabled ? _displayStatsAggregator : null;
+            CollectDaysLocked(stamp, (hit ? selectLiveDates : selectDates)(today), stableDays, liveDays);
+        }
+
+        // The remote snapshot is captured outside the statistics lock; it is memoised per revision.
+        capture = new HistoryAggregateCapture(stamp, aggregator, GetRemoteSnapshot(stamp), stableDays, liveDays);
+        if (hit)
+        {
+            return cachedValue;
+        }
+
+        var value = build(capture);
+        // A result computed while the history revision moved on is returned but never cached.
+        PublishAggregate(ref cache, key, stamp, value);
+        return value;
+    }
+
+    /// <summary>
+    /// Splits the range into immutable archived references and clones of the still-changing days.
+    /// Callers must hold <see cref="_lock"/>.
+    /// </summary>
+    private void CollectDaysLocked(
+        HistoryAggregateStamp stamp,
+        List<DateTime> dates,
+        List<(DateTime Date, DailyStats Stats)> stableDays,
+        List<(DateTime Date, DailyStats Stats)> liveDays)
+    {
+        foreach (var date in dates)
+        {
+            var normalized = date.Date;
+            if (normalized < stamp.StatisticsDay && normalized <= stamp.Today)
+            {
+                // History entries are replaced, never mutated in place, so the reference is
+                // safe to aggregate outside the lock.
+                stableDays.Add((normalized, GetLocalDailyStats(normalized)));
+            }
+            else
+            {
+                liveDays.Add((normalized, CloneDailyStats(GetLocalDailyStats(normalized), normalized)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Remote contributions are captured once per history revision: ordinary counter updates do
+    /// not change them, and every remote change advances <see cref="HistoryRevision"/>.
+    /// </summary>
+    private DisplayRemoteSnapshot GetRemoteSnapshot(HistoryAggregateStamp stamp)
+    {
+        if (!stamp.SyncEnabled)
+        {
+            return DisplayRemoteSnapshot.Empty;
+        }
+
+        DisplayStatsAggregator? aggregator;
+        lock (_lock)
+        {
+            if (_remoteSnapshot != null && _remoteSnapshotRevision == stamp.Revision)
+            {
+                return _remoteSnapshot;
+            }
+
+            aggregator = _displayStatsAggregator;
+        }
+
+        if (aggregator == null)
+        {
+            return DisplayRemoteSnapshot.Empty;
+        }
+
+        var snapshot = aggregator.CaptureSnapshot();
+        lock (_lock)
+        {
+            // Only memoise when the capture still belongs to this revision; otherwise the caller
+            // gets a one-off snapshot and its own aggregate is never cached (stale stamp).
+            if (_historyRevision == stamp.Revision)
+            {
+                _remoteSnapshot = snapshot;
+                _remoteSnapshotRevision = stamp.Revision;
+            }
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Dates from <paramref name="startDate"/> to today that belong to the live window. Callers
+    /// must hold <see cref="_lock"/> (it reads <see cref="CurrentStats"/>).
+    /// </summary>
+    private List<DateTime> LiveDatesFrom(DateTime startDate, DateTime today)
+    {
+        var statisticsDay = CurrentStats.Date.Date;
+        var start = startDate.Date > statisticsDay ? startDate.Date : statisticsDay;
+        var dates = new List<DateTime>();
+        for (var date = start; date <= today; date = date.AddDays(1))
+        {
+            dates.Add(date);
+        }
+
+        return dates;
+    }
+
+    /// <summary>Live subset of the "All" key/app date sets: archived days from the statistics day on.</summary>
+    private List<DateTime> SelectLiveHistoryKeyDates(DateTime today, bool includeRemoteDays)
+    {
+        var statisticsDay = CurrentStats.Date.Date;
+        var dates = new List<DateTime>();
+        for (var date = statisticsDay; date <= today; date = date.AddDays(1))
+        {
+            if (History.ContainsKey(date.ToString("yyyy-MM-dd")))
+            {
+                dates.Add(date);
+            }
+        }
+
+        if (today >= statisticsDay && !dates.Contains(today))
+        {
+            dates.Add(today);
+        }
+
+        if (includeRemoteDays && _isSyncEnabledProvider?.Invoke() == true && _displayStatsAggregator != null)
+        {
+            // Reuse the per-revision snapshot's day list on the hot path instead of walking the
+            // remote cache again; only the memo lookup itself touches the cache.
+            IEnumerable<DateTime> remoteDays =
+                _remoteSnapshot != null && _remoteSnapshotRevision == _historyRevision
+                    ? _remoteSnapshot.Days
+                    : _displayStatsAggregator.GetRemoteDays();
+
+            foreach (var remoteDay in remoteDays)
+            {
+                if (remoteDay <= today && remoteDay >= statisticsDay && !dates.Contains(remoteDay))
+                {
+                    dates.Add(remoteDay);
+                }
+            }
+        }
+
+        dates.Sort();
+        return dates;
+    }
+
+    private static DateTime HistoryRangeStart(HistoryRange range, DateTime today) => range switch
+    {
+        HistoryRange.Yesterday => today.AddDays(-1),
+        HistoryRange.ThreeDays => today.AddDays(-2),
+        HistoryRange.Week => today.AddDays(-6),
+        HistoryRange.Month => today.AddDays(-29),
+        _ => today
+    };
+
+    private static DateTime KeyHistoryRangeStart(KeyHistoryRange range, DateTime today) => range switch
+    {
+        KeyHistoryRange.Week => today.AddDays(-6),
+        KeyHistoryRange.Month => today.AddDays(-29),
+        _ => today
+    };
+
+    private static DateTime AppStatsRangeStart(AppStatsRange range, DateTime today) => range switch
+    {
+        AppStatsRange.Week => today.AddDays(-6),
+        AppStatsRange.Month => today.AddDays(-29),
+        _ => today
+    };
+
+    private static DateTime KeyboardHeatmapRangeStart(KeyboardHeatmapRange range, DateTime today) => range switch
+    {
+        KeyboardHeatmapRange.Week => today.AddDays(-6),
+        KeyboardHeatmapRange.Month => today.AddDays(-29),
+        _ => today
+    };
+
+    private static DateTime MouseTotalsRangeStart(MouseTotalsRange range, DateTime today) => range switch
+    {
+        MouseTotalsRange.Week => today.AddDays(-(((int)today.DayOfWeek + 6) % 7)),
+        MouseTotalsRange.Month => new DateTime(today.Year, today.Month, 1),
+        MouseTotalsRange.Year => new DateTime(today.Year, 1, 1),
+        _ => today
+    };
+
+    /// <summary>
+    /// Earliest archived day. Validated by the full history stamp (revision, wall-clock day and
+    /// statistics day) so a date that moves on before the rollover cannot reuse a stale boundary.
+    /// </summary>
+    private DateTime GetHistoryMinDayLocked(DateTime today)
+    {
+        var statisticsDay = CurrentStats.Date.Date;
+        if (_historyMinDayValid &&
+            _historyMinDayRevision == _historyRevision &&
+            _historyMinDayToday == today.Date &&
+            _historyMinDayStatisticsDay == statisticsDay)
+        {
+            return _historyMinDay;
+        }
+
+        var min = today;
+        foreach (var stats in History.Values)
+        {
+            var date = stats.Date.Date;
+            if (date <= today && date < min)
+            {
+                min = date;
+            }
+        }
+
+        _historyMinDay = min;
+        _historyMinDayRevision = _historyRevision;
+        _historyMinDayToday = today.Date;
+        _historyMinDayStatisticsDay = statisticsDay;
+        _historyMinDayValid = true;
+        return min;
+    }
+
+    private DateTime GetHeatmapStartLocked(DateTime today)
+    {
+        var statisticsDay = CurrentStats.Date.Date;
+        var syncEnabled = _isSyncEnabledProvider?.Invoke() == true && _displayStatsAggregator != null;
+        if (_heatmapStartValid &&
+            _heatmapStartRevision == _historyRevision &&
+            _heatmapStartToday == today.Date &&
+            _heatmapStartStatisticsDay == statisticsDay &&
+            _heatmapStartSyncEnabled == syncEnabled)
+        {
+            return _heatmapStart;
+        }
+
+        var start = statisticsDay <= today ? statisticsDay : today;
+        foreach (var stats in History.Values)
+        {
+            var candidate = stats.Date.Date;
+            if (candidate <= today && candidate < start)
+            {
+                start = candidate;
+            }
+        }
+
+        if (syncEnabled)
+        {
+            foreach (var candidate in _displayStatsAggregator!.GetRemoteDays())
+            {
+                if (candidate <= today && candidate < start)
+                {
+                    start = candidate;
+                }
+            }
+        }
+
+        _heatmapStart = start;
+        _heatmapStartRevision = _historyRevision;
+        _heatmapStartToday = today.Date;
+        _heatmapStartStatisticsDay = statisticsDay;
+        _heatmapStartSyncEnabled = syncEnabled;
+        _heatmapStartValid = true;
+        return start;
+    }
+
+    private static DailyStats ResolveDay(HistoryAggregateCapture capture, (DateTime Date, DailyStats Stats) day) =>
+        capture.Aggregator != null
+            ? capture.Aggregator.Aggregate(day.Date, day.Stats, capture.Remote)
+            : day.Stats;
+
+    private static bool TryGetCachedAggregate<T>(
+        HistoryAggregateEntry<T>? entry,
+        in HistoryAggregateStamp stamp,
+        out T value)
+    {
+        if (entry != null && entry.Stamp.Matches(stamp))
+        {
+            value = entry.Value;
+            return true;
+        }
+
+        value = default!;
+        return false;
+    }
+
+    private static bool TryGetCachedAggregate<TKey, T>(
+        Dictionary<TKey, HistoryAggregateEntry<T>>? cache,
+        TKey key,
+        in HistoryAggregateStamp stamp,
+        out T value)
+        where TKey : notnull
+    {
+        if (cache != null && cache.TryGetValue(key, out var entry))
+        {
+            return TryGetCachedAggregate(entry, stamp, out value);
+        }
+
+        value = default!;
+        return false;
+    }
+
+    private void PublishAggregate<T>(ref HistoryAggregateEntry<T>? field, in HistoryAggregateStamp stamp, T value)
+    {
+        lock (_lock)
+        {
+            if (!IsStampCurrentLocked(stamp))
+            {
+                return;
+            }
+
+            field = new HistoryAggregateEntry<T>(stamp, value);
+        }
+    }
+
+    private void PublishAggregate<TKey, T>(
+        ref Dictionary<TKey, HistoryAggregateEntry<T>>? cache,
+        TKey key,
+        in HistoryAggregateStamp stamp,
+        T value)
+        where TKey : notnull
+    {
+        lock (_lock)
+        {
+            if (!IsStampCurrentLocked(stamp))
+            {
+                return;
+            }
+
+            (cache ??= new Dictionary<TKey, HistoryAggregateEntry<T>>())[key] =
+                new HistoryAggregateEntry<T>(stamp, value);
+        }
+    }
+
+    #endregion
+
     #region History
 
     public enum HistoryRange { Today, Yesterday, ThreeDays, Week, Month, All }
@@ -1904,35 +2654,53 @@ public class StatsManager : IDisposable
 
     public HistoryTrendSeries GetHistoryTrendSeries(HistoryRange range, HistoryMetric metric)
     {
-        lock (_lock)
+        var stable = GetHistoryAggregate(
+            ref _trendCache,
+            (range, metric),
+            today => GetDatesInRange(range, today),
+            today => LiveDatesFrom(
+                range == HistoryRange.All ? GetHistoryMinDayLocked(today) : HistoryRangeStart(range, today),
+                today),
+            capture => AggregateTrendTotals(capture, metric),
+            out var capture);
+
+        var localSeries = new List<(DateTime Date, double Value)>(stable.Local);
+        var displaySeries = stable.Display != null
+            ? new List<(DateTime Date, double Value)>(stable.Display)
+            : null;
+
+        foreach (var day in capture.LiveDays)
         {
-            var dates = GetDatesInRange(range);
-            var localSeries = dates
-                .Select(date =>
-                {
-                    var stats = GetLocalDailyStats(date);
-                    return (date, GetMetricValue(metric, stats));
-                })
-                .ToList();
-
-            if (metric is HistoryMetric.MouseDistance or HistoryMetric.ScrollDistance ||
-                _displayStatsAggregator == null ||
-                _isSyncEnabledProvider?.Invoke() != true ||
-                !_displayStatsAggregator.GetRemoteDays().Any())
+            localSeries.Add((day.Date, GetMetricValue(metric, day.Stats)));
+            if (displaySeries != null)
             {
-                return new HistoryTrendSeries(localSeries, null);
+                displaySeries.Add((day.Date, GetMetricValue(metric, ResolveDay(capture, day))));
             }
-
-            var displaySeries = dates
-                .Select(date =>
-                {
-                    var stats = GetDailyStats(date);
-                    return (date, GetMetricValue(metric, stats));
-                })
-                .ToList();
-
-            return new HistoryTrendSeries(displaySeries, localSeries);
         }
+
+        return new HistoryTrendSeries(displaySeries ?? localSeries, localSeries);
+    }
+
+    private TrendSeriesTotals AggregateTrendTotals(HistoryAggregateCapture capture, HistoryMetric metric)
+    {
+        var local = capture.StableDays
+            .Select(day => (day.Date, GetMetricValue(metric, day.Stats)))
+            .ToList();
+
+        var hasRemoteDays = capture.Aggregator != null &&
+                            capture.Stamp.SyncEnabled &&
+                            capture.Remote.Days.Count > 0;
+
+        if (metric is HistoryMetric.MouseDistance or HistoryMetric.ScrollDistance || !hasRemoteDays)
+        {
+            return new TrendSeriesTotals(local, null);
+        }
+
+        var display = capture.StableDays
+            .Select(day => (day.Date, GetMetricValue(metric, ResolveDay(capture, day))))
+            .ToList();
+
+        return new TrendSeriesTotals(local, display);
     }
 
     public (
@@ -1945,33 +2713,52 @@ public class StatsManager : IDisposable
         double ScrollDistance
     ) GetHistoryInputTotals(MouseTotalsRange range)
     {
-        lock (_lock)
+        var stable = GetHistoryAggregate(
+            ref _inputTotalsCache,
+            range,
+            today => GetDatesInMouseTotalsRange(range, today),
+            today => LiveDatesFrom(
+                range == MouseTotalsRange.All ? CurrentStats.Date.Date : MouseTotalsRangeStart(range, today),
+                today),
+            AggregateInputTotals,
+            out var capture);
+
+        var totals = stable;
+        foreach (var day in capture.LiveDays)
         {
-            var totals = (
-                LeftClicks: 0,
-                MiddleClicks: 0,
-                RightClicks: 0,
-                SideBackClicks: 0,
-                SideForwardClicks: 0,
-                MouseDistance: 0.0,
-                ScrollDistance: 0.0
-            );
-
-            foreach (var date in GetDatesInMouseTotalsRange(range))
-            {
-                var stats = GetDailyStats(date);
-                totals.LeftClicks = SafeAdd(totals.LeftClicks, stats.LeftClicks);
-                totals.MiddleClicks = SafeAdd(totals.MiddleClicks, stats.MiddleClicks);
-                totals.RightClicks = SafeAdd(totals.RightClicks, stats.RightClicks);
-                totals.SideBackClicks = SafeAdd(totals.SideBackClicks, stats.SideBackClicks);
-                totals.SideForwardClicks = SafeAdd(totals.SideForwardClicks, stats.SideForwardClicks);
-                totals.MouseDistance += Math.Max(0, stats.MouseDistance);
-                totals.ScrollDistance += Math.Max(0, stats.ScrollDistance);
-            }
-
-            return totals;
+            totals = AddDayToInputTotals(totals, ResolveDay(capture, day));
         }
+
+        return (
+            totals.LeftClicks,
+            totals.MiddleClicks,
+            totals.RightClicks,
+            totals.SideBackClicks,
+            totals.SideForwardClicks,
+            totals.MouseDistance,
+            totals.ScrollDistance);
     }
+
+    private static InputTotals AggregateInputTotals(HistoryAggregateCapture capture)
+    {
+        var totals = new InputTotals(0, 0, 0, 0, 0, 0.0, 0.0);
+        foreach (var day in capture.StableDays)
+        {
+            totals = AddDayToInputTotals(totals, ResolveDay(capture, day));
+        }
+
+        return totals;
+    }
+
+    private static InputTotals AddDayToInputTotals(InputTotals totals, DailyStats stats) =>
+        new(
+            SafeAdd(totals.LeftClicks, stats.LeftClicks),
+            SafeAdd(totals.MiddleClicks, stats.MiddleClicks),
+            SafeAdd(totals.RightClicks, stats.RightClicks),
+            SafeAdd(totals.SideBackClicks, stats.SideBackClicks),
+            SafeAdd(totals.SideForwardClicks, stats.SideForwardClicks),
+            totals.MouseDistance + Math.Max(0, stats.MouseDistance),
+            totals.ScrollDistance + Math.Max(0, stats.ScrollDistance));
 
     public string FormatHistoryValue(HistoryMetric metric, double value)
     {
@@ -1986,35 +2773,49 @@ public class StatsManager : IDisposable
 
     public List<(string Key, int Count)> GetHistoricalKeyCounts(KeyHistoryRange range, int limit = int.MaxValue)
     {
-        lock (_lock)
+        var stable = GetHistoryAggregate(
+            ref _keyHistoryCache,
+            range,
+            today => GetDatesInKeyHistoryRange(range, today),
+            today => range == KeyHistoryRange.All
+                ? SelectLiveHistoryKeyDates(today, includeRemoteDays: true)
+                : LiveDatesFrom(KeyHistoryRangeStart(range, today), today),
+            AggregateKeyHistoryTotals,
+            out var capture);
+
+        var totals = new Dictionary<string, int>(stable, StringComparer.Ordinal);
+        foreach (var day in capture.LiveDays)
         {
-            var totals = new Dictionary<string, int>(StringComparer.Ordinal);
-            var dates = GetDatesInKeyHistoryRange(range);
-
-            foreach (var date in dates)
-            {
-                var daily = GetDailyStats(date);
-                MergeKeyCounts(daily.KeyPressCounts, totals);
-            }
-
-            var sorted = totals
-                .Where(x => x.Value > 0)
-                .OrderByDescending(x => x.Value)
-                .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(x => (x.Key, x.Value));
-
-            if (limit > 0 && limit < int.MaxValue)
-            {
-                return sorted.Take(limit).ToList();
-            }
-
-            return sorted.ToList();
+            MergeKeyCounts(ResolveDay(capture, day).KeyPressCounts, totals);
         }
+
+        var sorted = totals
+            .Where(x => x.Value > 0)
+            .OrderByDescending(x => x.Value)
+            .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => (x.Key, x.Value));
+
+        if (limit > 0 && limit < int.MaxValue)
+        {
+            return sorted.Take(limit).ToList();
+        }
+
+        return sorted.ToList();
     }
 
-    private List<DateTime> GetDatesInMouseTotalsRange(MouseTotalsRange range)
+    private static Dictionary<string, int> AggregateKeyHistoryTotals(HistoryAggregateCapture capture)
     {
-        var today = DateTime.Today;
+        var totals = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var day in capture.StableDays)
+        {
+            MergeKeyCounts(ResolveDay(capture, day).KeyPressCounts, totals);
+        }
+
+        return totals;
+    }
+
+    private List<DateTime> GetDatesInMouseTotalsRange(MouseTotalsRange range, DateTime today)
+    {
         var startDate = range switch
         {
             MouseTotalsRange.Week => today.AddDays(-(((int)today.DayOfWeek + 6) % 7)),
@@ -2040,17 +2841,12 @@ public class StatsManager : IDisposable
         return dates;
     }
 
-    private List<DateTime> GetDatesInRange(HistoryRange range)
+    private List<DateTime> GetDatesInRange(HistoryRange range, DateTime today)
     {
-        var today = DateTime.Today;
         DateTime startDate;
         if (range == HistoryRange.All)
         {
-            startDate = History.Values
-                .Select(stats => stats.Date.Date)
-                .Where(date => date <= today)
-                .DefaultIfEmpty(today)
-                .Min();
+            startDate = GetHistoryMinDayLocked(today);
         }
         else
         {
@@ -2073,9 +2869,8 @@ public class StatsManager : IDisposable
         return dates;
     }
 
-    private List<DateTime> GetDatesInKeyHistoryRange(KeyHistoryRange range)
+    private List<DateTime> GetDatesInKeyHistoryRange(KeyHistoryRange range, DateTime today)
     {
-        var today = DateTime.Today;
         if (range == KeyHistoryRange.All)
         {
             var dates = History.Values
@@ -2265,9 +3060,17 @@ public class StatsManager : IDisposable
         TeardownInputMonitor();
         StopActivityTimers();
         StopMidnightTimer();
-        SaveStats();
-        SaveHistory();
-        FlushSettings();
+
+        // Take the gate for the final flush and mark it complete under the same gate: a save that
+        // was already queued cannot write a newer snapshot over the exit state afterwards.
+        lock (SaveGate)
+        {
+            WriteStatsSnapshot();
+            WriteHistorySnapshot();
+            WriteSettingsSnapshot();
+            _shutdownFlushCompleted = true;
+        }
+
         DisposeActivityTimers();
         DisposeMidnightTimer();
         _instance = null;

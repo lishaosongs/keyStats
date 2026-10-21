@@ -34,6 +34,7 @@ public sealed class SyncSchedulingTests
         File.WriteAllText(Path.Combine(directory.Path, "sync_cache.json"), "damaged");
 
         var statsManager = (StatsManager)FormatterServices.GetUninitializedObject(typeof(StatsManager));
+        SetField(statsManager, "_lock", new object());
         using var coordinator = new SyncCoordinator(
             statsManager,
             directory.Path,
@@ -73,6 +74,7 @@ public sealed class SyncSchedulingTests
         // Avoid opening or modifying the real user's statistics directory. The coordinator only
         // attaches events and a display projection during construction; neither needs loaded stats.
         var statsManager = (StatsManager)FormatterServices.GetUninitializedObject(typeof(StatsManager));
+        SetField(statsManager, "_lock", new object());
         using var coordinator = new SyncCoordinator(
             statsManager,
             directory.Path,
@@ -120,6 +122,7 @@ public sealed class SyncSchedulingTests
         });
 
         var statsManager = (StatsManager)FormatterServices.GetUninitializedObject(typeof(StatsManager));
+        SetField(statsManager, "_lock", new object());
         using var coordinator = new SyncCoordinator(statsManager, directory.Path, null, "test");
         var method = typeof(SyncCoordinator).GetMethod(
             "EnsureAutomaticAttemptLocked",
@@ -153,5 +156,12 @@ public sealed class SyncSchedulingTests
 
         state.LastSuccessfulSyncAtUtc = now.AddMinutes(-15);
         Assert.IsFalse(SyncSchedulePolicy.ShouldPrioritizeDailyLaunchSync(state, now, timeZone));
+    }
+
+    private static void SetField(object target, string name, object value)
+    {
+        var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, "Missing test setup field: " + name);
+        field!.SetValue(target, value);
     }
 }

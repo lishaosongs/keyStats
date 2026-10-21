@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
+using KeyStats.Helpers;
 using KeyStats.Services;
 
 namespace KeyStats.ViewModels;
@@ -36,6 +39,9 @@ public class KeyHistoryViewModel : ViewModelBase
         Color.FromRgb(0x66, 0x66, 0x66)
     };
 
+    private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
+    private readonly BackgroundStatsRefresher<List<(string Key, int Count)>> _refresher;
+    private StatsManager.KeyHistoryRange _queryRange = MapRange(DefaultRangeIndex);
     private int _selectedRangeIndex;
     private string _summaryText = string.Empty;
     private bool _hasData;
@@ -53,7 +59,8 @@ public class KeyHistoryViewModel : ViewModelBase
             if (SetProperty(ref _selectedRangeIndex, value))
             {
                 PersistSelectedRangeIndex(value);
-                RefreshData();
+                _queryRange = MapRange(value);
+                RequestRefresh(conditionsChanged: true);
             }
         }
     }
@@ -85,33 +92,52 @@ public class KeyHistoryViewModel : ViewModelBase
     public KeyHistoryViewModel()
     {
         _selectedRangeIndex = LoadSelectedRangeIndex();
-        RefreshData();
+        _queryRange = MapRange(_selectedRangeIndex);
+        _refresher = new BackgroundStatsRefresher<List<(string Key, int Count)>>(
+            PostToUi,
+            () => StatsManager.Instance.HistoryRevision,
+            ComputeKeyCounts,
+            ApplyKeyCounts);
+
+        RequestRefresh(conditionsChanged: true);
         StatsManager.Instance.StatsUpdateRequested += OnStatsUpdateRequested;
     }
 
     public void Cleanup()
     {
         StatsManager.Instance.StatsUpdateRequested -= OnStatsUpdateRequested;
+        _refresher.Close();
     }
 
     private void OnStatsUpdateRequested()
     {
-        Application.Current?.Dispatcher.Invoke(RefreshData);
+        PostToUi(() => _refresher.Request());
     }
 
-    private void RefreshData()
+    private Task PostToUi(Action action)
+    {
+        if (_dispatcher.HasShutdownStarted)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _dispatcher.BeginInvoke(DispatcherPriority.Background, action).Task;
+    }
+
+    private void RequestRefresh(bool conditionsChanged = false)
+    {
+        _refresher.Request(conditionsChanged);
+    }
+
+    private List<(string Key, int Count)> ComputeKeyCounts()
+    {
+        var range = _queryRange;
+        return StatsManager.Instance.GetHistoricalKeyCounts(range);
+    }
+
+    private void ApplyKeyCounts(List<(string Key, int Count)> allItems)
     {
         var manager = StatsManager.Instance;
-        var range = SelectedRangeIndex switch
-        {
-            0 => StatsManager.KeyHistoryRange.Today,
-            1 => StatsManager.KeyHistoryRange.Week,
-            2 => StatsManager.KeyHistoryRange.Month,
-            3 => StatsManager.KeyHistoryRange.All,
-            _ => StatsManager.KeyHistoryRange.Week
-        };
-
-        var allItems = manager.GetHistoricalKeyCounts(range);
         var total = allItems.Sum(x => x.Count);
         var distinct = allItems.Count;
 
@@ -180,6 +206,15 @@ public class KeyHistoryViewModel : ViewModelBase
             startAngle += sweep;
         }
     }
+
+    private static StatsManager.KeyHistoryRange MapRange(int selectedRangeIndex) => selectedRangeIndex switch
+    {
+        0 => StatsManager.KeyHistoryRange.Today,
+        1 => StatsManager.KeyHistoryRange.Week,
+        2 => StatsManager.KeyHistoryRange.Month,
+        3 => StatsManager.KeyHistoryRange.All,
+        _ => StatsManager.KeyHistoryRange.Week
+    };
 
     private static int LoadSelectedRangeIndex()
     {

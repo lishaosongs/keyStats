@@ -163,6 +163,7 @@ public sealed class SyncCoordinatorHistoryResumeTests
     private static SyncCoordinator CreateCoordinator(string dataFolder, ISyncTransport transport)
     {
         var statsManager = (StatsManager)FormatterServices.GetUninitializedObject(typeof(StatsManager));
+        SetField(statsManager, "_lock", new object());
         return new SyncCoordinator(statsManager, dataFolder, null, "test", transport);
     }
 

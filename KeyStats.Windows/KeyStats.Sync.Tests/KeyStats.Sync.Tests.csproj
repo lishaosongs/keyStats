@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 测试用真实 Dispatcher 验证 UI 调度；net48 不默认引用 WindowsBase。 -->
+    <Reference Include="WindowsBase" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\KeyStats\KeyStats.csproj" />
   </ItemGroup>
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -9,6 +10,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using KeyStats.Helpers;
+using KeyStats.Models;
 using KeyStats.Services;
 using KeyStats.Views.Controls;
 
@@ -25,12 +27,58 @@ public partial class KeyboardHeatmapWindow : Window
     private DateTime _selectedDate = DateTime.Today;
     private DateTime _startDate = DateTime.Today;
     private DateTime _endDate = DateTime.Today;
-    private bool _pendingRefresh;
     private bool _isTransitionAnimating;
     private bool _suppressCalendarSelection;
     private bool _suppressAppSelection;
     private string? _selectedAppName;
     private bool _isReady;
+    private bool _isClosed;
+    private readonly BackgroundStatsRefresher<HeatmapRefreshResult> _refresher;
+    private HeatmapQuery _query = new(
+        StatsManager.KeyboardHeatmapRange.Today,
+        StatsManager.KeyboardHeatmapMode.Sum,
+        DateTime.Today,
+        null);
+    private DaySlideDirection? _pendingTransition;
+
+    /// <summary>
+    /// Immutable selection captured on the UI thread before a background computation starts.
+    /// </summary>
+    private sealed class HeatmapQuery
+    {
+        public HeatmapQuery(
+            StatsManager.KeyboardHeatmapRange range,
+            StatsManager.KeyboardHeatmapMode mode,
+            DateTime date,
+            string? appName)
+        {
+            Range = range;
+            Mode = mode;
+            Date = date;
+            AppName = appName;
+        }
+
+        public StatsManager.KeyboardHeatmapRange Range { get; }
+        public StatsManager.KeyboardHeatmapMode Mode { get; }
+        public DateTime Date { get; }
+        public string? AppName { get; }
+    }
+
+    /// <summary>
+    /// Plain data produced off the UI thread; text, icons and heatmap drawing are applied on the UI thread.
+    /// </summary>
+    private sealed class HeatmapRefreshResult
+    {
+        public HeatmapQuery Query { get; set; } = null!;
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public DateTime SelectedDate { get; set; }
+        public string? SelectedAppName { get; set; }
+        public Dictionary<string, double> KeyCounts { get; set; } = new(StringComparer.Ordinal);
+        public double TotalKeyPresses { get; set; }
+        public bool ShowDecimals { get; set; }
+        public List<AppStats> DayApps { get; set; } = new();
+    }
 
     private sealed class AppFilterOption
     {
@@ -51,7 +99,14 @@ public partial class KeyboardHeatmapWindow : Window
 
     public KeyboardHeatmapWindow()
     {
+        _refresher = new BackgroundStatsRefresher<HeatmapRefreshResult>(
+            PostToUi,
+            () => StatsManager.Instance.HistoryRevision,
+            ComputeRefresh,
+            ApplyRefresh);
+
         InitializeComponent();
+
         var settings = StatsManager.Instance.Settings;
         if (settings.KeyboardHeatmapWindowWidth is double width &&
             width > 0 && !double.IsNaN(width) && !double.IsInfinity(width))
@@ -66,7 +121,7 @@ public partial class KeyboardHeatmapWindow : Window
         }
 
         ApplyLocalizedText();
-        RefreshData();
+        RequestRefresh(conditionsChanged: true);
         UpdateAppearance();
 
         Loaded += OnLoaded;
@@ -81,12 +136,14 @@ public partial class KeyboardHeatmapWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyWindowBackdrop();
-        RefreshData();
+        RequestRefresh();
         App.CurrentApp?.TrackPageView("keyboard_heatmap");
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _isClosed = true;
+        _refresher.Close();
         SaveWindowSize();
         StatsManager.Instance.StatsUpdateRequested -= OnStatsUpdateRequested;
         ThemeManager.Instance.ThemeChanged -= OnThemeChanged;
@@ -115,37 +172,141 @@ public partial class KeyboardHeatmapWindow : Window
 
     private void OnActivated(object? sender, EventArgs e)
     {
-        RefreshData();
+        RequestRefresh();
     }
 
     private void OnThemeChanged()
     {
-        Dispatcher.BeginInvoke(new Action(() =>
+        PostToUi(() =>
         {
             UpdateAppearance();
-            RefreshData();
-        }));
+            RequestRefresh();
+        });
     }
 
     private void OnStatsUpdateRequested()
     {
-        Dispatcher.BeginInvoke(new Action(() =>
+        // Notifications arrive on a thread pool thread; post instead of blocking it on the UI.
+        PostToUi(() =>
         {
-            if (_pendingRefresh)
+            if (!_isTransitionAnimating && !AppFilterComboBox.IsDropDownOpen)
             {
-                return;
+                RequestRefresh();
             }
+        });
+    }
 
-            _pendingRefresh = true;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                _pendingRefresh = false;
-                if (!_isTransitionAnimating && !AppFilterComboBox.IsDropDownOpen)
-                {
-                    RefreshData();
-                }
-            }), DispatcherPriority.Background);
-        }), DispatcherPriority.Background);
+    private Task PostToUi(Action action)
+    {
+        if (Dispatcher.HasShutdownStarted)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Dispatcher.BeginInvoke(DispatcherPriority.Background, action).Task;
+    }
+
+    private void RequestRefresh(bool conditionsChanged = false)
+    {
+        if (_isClosed)
+        {
+            return;
+        }
+
+        _query = new HeatmapQuery(_selectedRange, _selectedMode, _selectedDate, _selectedAppName);
+        _refresher.Request(conditionsChanged);
+    }
+
+    private HeatmapRefreshResult ComputeRefresh()
+    {
+        var manager = StatsManager.Instance;
+        var query = _query;
+        var bounds = manager.GetKeyboardHeatmapDateBounds();
+        var startDate = bounds.Start.Date;
+        var endDate = bounds.End.Date;
+        var selectedDate = ClampDate(query.Date, startDate, endDate);
+
+        var result = new HeatmapRefreshResult
+        {
+            Query = query,
+            StartDate = startDate,
+            EndDate = endDate,
+            SelectedDate = selectedDate,
+            ShowDecimals = query.Range != StatsManager.KeyboardHeatmapRange.Today &&
+                           query.Mode == StatsManager.KeyboardHeatmapMode.Average
+        };
+
+        if (query.Range == StatsManager.KeyboardHeatmapRange.Today)
+        {
+            var dayData = manager.GetKeyboardHeatmapDay(selectedDate, query.AppName);
+            result.SelectedAppName = dayData.SelectedAppName;
+            result.DayApps = dayData.Apps;
+            result.KeyCounts = dayData.KeyCounts
+                .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => (double)kvp.Value, StringComparer.Ordinal);
+            result.TotalKeyPresses = dayData.TotalKeyPresses;
+        }
+        else
+        {
+            var summary = manager.GetKeyboardHeatmapSummary(query.Range, query.Mode);
+            result.SelectedAppName = null;
+            result.KeyCounts = summary.KeyCounts
+                .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal);
+            result.TotalKeyPresses = summary.TotalKeyPresses;
+        }
+
+        return result;
+    }
+
+    private void ApplyRefresh(HeatmapRefreshResult result)
+    {
+        var query = result.Query;
+        var snapshot = _pendingTransition == null ? null : CaptureCurrentLayerSnapshot();
+
+        _startDate = result.StartDate;
+        _endDate = result.EndDate;
+        _selectedDate = result.SelectedDate;
+
+        if (query.Range == StatsManager.KeyboardHeatmapRange.Today)
+        {
+            _selectedAppName = result.SelectedAppName;
+            UpdateAppFilter(result);
+        }
+        else
+        {
+            _selectedAppName = null;
+            ClearAppFilter();
+        }
+
+        KeyboardHeatmapView.Apply(result.KeyCounts, result.ShowDecimals);
+
+        var activeKeys = result.KeyCounts.Values.Count(value => value > 0);
+        var totalFormatted = FormatHeatmapValue(result.TotalKeyPresses, result.ShowDecimals);
+        var activeFormatted = activeKeys.ToString("N0", CultureInfo.CurrentCulture);
+        var summaryFormat = result.ShowDecimals
+            ? KeyStats.Properties.Strings.Heatmap_AverageSummaryFormat
+            : KeyStats.Properties.Strings.Heatmap_SummaryFormat;
+        SummaryText.Text = string.Format(CultureInfo.CurrentCulture, summaryFormat, totalFormatted, activeFormatted);
+        DateText.Text = DisplayDateString(_selectedDate);
+
+        var hasActivity = query.Range == StatsManager.KeyboardHeatmapRange.Today
+            ? result.KeyCounts.Values.Any(value => value > 0)
+            : result.TotalKeyPresses > 0;
+        EmptyBadgeText.Text = query.Range == StatsManager.KeyboardHeatmapRange.Today && _selectedAppName != null
+            ? KeyStats.Properties.Strings.Heatmap_NoAppData
+            : KeyStats.Properties.Strings.Heatmap_NoData;
+        EmptyOverlay.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
+        EmptyBadge.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
+
+        UpdateNavigationState();
+        UpdateDatePickerState();
+
+        if (_pendingTransition is { } direction)
+        {
+            _pendingTransition = null;
+            AnimateDayTransition(direction, snapshot);
+        }
     }
 
     private void ApplyLocalizedText()
@@ -179,11 +340,12 @@ public partial class KeyboardHeatmapWindow : Window
         }
 
         DatePickerPopup.IsOpen = false;
+        _pendingTransition = null;
         App.CurrentApp?.TrackClick("keyboard_heatmap_range", new Dictionary<string, object?>
         {
             ["range"] = tag
         });
-        RefreshData();
+        RequestRefresh(conditionsChanged: true);
     }
 
     private void HeatmapMode_Checked(object sender, RoutedEventArgs e)
@@ -195,11 +357,12 @@ public partial class KeyboardHeatmapWindow : Window
         }
 
         _selectedMode = mode;
+        _pendingTransition = null;
         App.CurrentApp?.TrackClick("keyboard_heatmap_mode", new Dictionary<string, object?>
         {
             ["mode"] = tag
         });
-        RefreshData();
+        RequestRefresh(conditionsChanged: true);
     }
 
     private void UpdateAppearance()
@@ -219,71 +382,13 @@ public partial class KeyboardHeatmapWindow : Window
         WindowBackdropHelper.Apply(this, NativeInterop.DwmSystemBackdropType.TransientWindow);
     }
 
-    private void RefreshData()
-    {
-        var manager = StatsManager.Instance;
-        var bounds = manager.GetKeyboardHeatmapDateBounds();
-        _startDate = bounds.Start.Date;
-        _endDate = bounds.End.Date;
-        _selectedDate = ClampDate(_selectedDate);
-
-        Dictionary<string, double> visibleCounts;
-        double totalKeyPresses;
-        var showDecimals = _selectedRange != StatsManager.KeyboardHeatmapRange.Today &&
-                           _selectedMode == StatsManager.KeyboardHeatmapMode.Average;
-
-        if (_selectedRange == StatsManager.KeyboardHeatmapRange.Today)
-        {
-            var dayData = manager.GetKeyboardHeatmapDay(_selectedDate, _selectedAppName);
-            _selectedAppName = dayData.SelectedAppName;
-            UpdateAppFilter(dayData);
-            visibleCounts = dayData.KeyCounts
-                .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
-                .ToDictionary(kvp => kvp.Key, kvp => (double)kvp.Value, StringComparer.Ordinal);
-            totalKeyPresses = dayData.TotalKeyPresses;
-        }
-        else
-        {
-            _selectedAppName = null;
-            ClearAppFilter();
-            var summary = manager.GetKeyboardHeatmapSummary(_selectedRange, _selectedMode);
-            visibleCounts = summary.KeyCounts
-                .Where(kvp => KeyboardHeatmapControl.SupportedKeyIds.Contains(kvp.Key))
-                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal);
-            totalKeyPresses = summary.TotalKeyPresses;
-        }
-
-        KeyboardHeatmapView.Apply(visibleCounts, showDecimals);
-
-        var activeKeys = visibleCounts.Values.Count(value => value > 0);
-        var totalFormatted = FormatHeatmapValue(totalKeyPresses, showDecimals);
-        var activeFormatted = activeKeys.ToString("N0", CultureInfo.CurrentCulture);
-        var summaryFormat = showDecimals
-            ? KeyStats.Properties.Strings.Heatmap_AverageSummaryFormat
-            : KeyStats.Properties.Strings.Heatmap_SummaryFormat;
-        SummaryText.Text = string.Format(CultureInfo.CurrentCulture, summaryFormat, totalFormatted, activeFormatted);
-        DateText.Text = DisplayDateString(_selectedDate);
-
-        var hasActivity = _selectedRange == StatsManager.KeyboardHeatmapRange.Today
-            ? visibleCounts.Values.Any(value => value > 0)
-            : totalKeyPresses > 0;
-        EmptyBadgeText.Text = _selectedRange == StatsManager.KeyboardHeatmapRange.Today && _selectedAppName != null
-            ? KeyStats.Properties.Strings.Heatmap_NoAppData
-            : KeyStats.Properties.Strings.Heatmap_NoData;
-        EmptyOverlay.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
-        EmptyBadge.Visibility = hasActivity ? Visibility.Collapsed : Visibility.Visible;
-
-        UpdateNavigationState();
-        UpdateDatePickerState();
-    }
-
-    private void UpdateAppFilter(StatsManager.KeyboardHeatmapDay dayData)
+    private void UpdateAppFilter(HeatmapRefreshResult result)
     {
         var options = new List<AppFilterOption>
         {
             new(null, KeyStats.Properties.Strings.Heatmap_AllApps)
         };
-        options.AddRange(dayData.Apps.Select(app => new AppFilterOption(
+        options.AddRange(result.DayApps.Select(app => new AppFilterOption(
             app.AppName,
             string.Format(CultureInfo.CurrentCulture, KeyStats.Properties.Strings.Heatmap_AppOptionFormat,
                 string.IsNullOrWhiteSpace(app.DisplayName) ? app.AppName : app.DisplayName,
@@ -327,12 +432,12 @@ public partial class KeyboardHeatmapWindow : Window
         {
             ["scope"] = _selectedAppName == null ? "all" : "app"
         });
-        RefreshData();
+        RequestRefresh(conditionsChanged: true);
     }
 
     private void AppFilterComboBox_DropDownClosed(object? sender, EventArgs e)
     {
-        if (!_suppressAppSelection) RefreshData();
+        if (!_suppressAppSelection) RequestRefresh();
     }
 
     private static string FormatHeatmapValue(double value, bool showDecimals)
@@ -350,17 +455,19 @@ public partial class KeyboardHeatmapWindow : Window
         return date.ToString("d", CultureInfo.CurrentCulture);
     }
 
-    private DateTime ClampDate(DateTime date)
+    private DateTime ClampDate(DateTime date) => ClampDate(date, _startDate, _endDate);
+
+    private static DateTime ClampDate(DateTime date, DateTime start, DateTime end)
     {
         var normalized = date.Date;
-        if (normalized < _startDate)
+        if (normalized < start)
         {
-            return _startDate;
+            return start;
         }
 
-        if (normalized > _endDate)
+        if (normalized > end)
         {
-            return _endDate;
+            return end;
         }
 
         return normalized;
@@ -513,11 +620,12 @@ public partial class KeyboardHeatmapWindow : Window
         }
 
         var direction = target < _selectedDate ? DaySlideDirection.Left : DaySlideDirection.Right;
-        var snapshot = CaptureCurrentLayerSnapshot();
 
         _selectedDate = target;
-        RefreshData();
-        AnimateDayTransition(direction, snapshot);
+        // The outgoing snapshot is taken in ApplyRefresh, right before the new day is drawn,
+        // so the slide animation keeps the same ordering as the previous synchronous refresh.
+        _pendingTransition = direction;
+        RequestRefresh(conditionsChanged: true);
     }
 
     private BitmapSource? CaptureCurrentLayerSnapshot()
