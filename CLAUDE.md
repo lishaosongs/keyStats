@@ -4,79 +4,101 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KeyStats is a Windows system tray app (WPF + WinForms interop on .NET Framework 4.8, `net48`) that tracks keyboard and mouse input statistics — counts and distances only, never content. Optional multi-device sync is provided by an independently deployable Cloudflare Worker.
+KeyStats is a Windows system tray app that tracks keyboard and mouse usage — counts and distances only, never input content. It targets .NET Framework 4.8 (`net48`) with WPF + WinForms interop, C# `LangVersion` 10.0 and nullable enabled. Optional multi-device sync is end-to-end encrypted and served by an independently deployable Cloudflare Worker.
 
 Repo layout:
 
-- `KeyStats.Windows/` — the Windows app, its solution, packaging scripts, and `KeyStats.Sync.Tests`.
+- `KeyStats.Windows/` — Windows app, solution, packaging scripts, and `KeyStats.Sync.Tests`.
 - `contracts/sync/v1/` — wire-level source of truth for E2EE sync (JSON Schema, OpenAPI, fixtures).
-- `services/sync-worker/` — the Cloudflare Worker backend (TypeScript, D1 + R2).
-- `scripts/` — build and release scripts.
-- `docs/` — design docs and implementation plans.
+- `services/sync-worker/` — Cloudflare Worker backend (TypeScript, D1 + R2).
+- `scripts/` — release and Scoop publishing scripts.
 
 Detailed guidance:
 
-- App architecture, conventions, and constraints: `KeyStats.Windows/CLAUDE.md` and `KeyStats.Windows/AGENTS.md`.
 - Sync protocol rules: `contracts/sync/v1/README.md`.
 - Sync service operations and deployment: `services/sync-worker/README.md`.
 
 ## Build & Test
 
+Prerequisites: Windows with a .NET SDK (CI uses 8.0.x to build `net48`) and, for the worker, Node.js 22.
+
 ```bash
+# From the repository root (use a separate shell from the worker commands)
 cd KeyStats.Windows
 
-# Build
+# Debug / Release build
+dotnet build KeyStats/KeyStats.csproj -c Debug
 dotnet build KeyStats/KeyStats.csproj -c Release
 
-# Automated tests (sync protocol, crypto fixtures, scheduling, persistence)
+# Run the Debug build (output path from the csproj/build script)
+./KeyStats/bin/Debug/net48/KeyStats.exe
+
+# Automated tests (MSTest; sync protocol, crypto fixtures, scheduling, persistence)
 dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj
+
+# Single test (class or fully qualified method)
+dotnet test KeyStats.Sync.Tests/KeyStats.Sync.Tests.csproj --filter "FullyQualifiedName~SyncBatchPlannerTests.SyncProgress_AdvancesByDayAndStopsAtTotal"
 
 # Package (produces dist/KeyStats-Windows-<version>.zip)
 powershell -ExecutionPolicy Bypass -File ./build.ps1 -Configuration Release
 ```
 
+`build.ps1` accepts `-SyncServiceBaseUrl <https://...workers.dev>`; a direct `dotnet build` takes `/p:SyncServiceBaseUrl=<url>` instead. Debug defaults to the staging worker, and an empty URL leaves sync networking disabled (see `KeyStats.Windows/KeyStats/Services/SyncServiceConfiguration.cs`).
+
 ```bash
-# Sync worker
+# From the repository root in a separate shell
 cd services/sync-worker
+
 npm ci
-npm run check
+npm run check                 # existing verification entry point; no separate lint script
+npm run contracts:check       # schemas, OpenAPI, golden crypto vectors
+npm run types:check && npm run typecheck
+npm test                      # deploy-config test + Vitest in Miniflare (D1/R2)
+npx wrangler d1 migrations apply DB --local
+npm run dev                   # local Worker via wrangler dev
+
+# Single worker test
+npx vitest run test/worker.test.ts -t "binds client-generated vault tokens"
 ```
 
-## Architecture (Windows app)
+Validate according to the change, not with a full regression every time. For sync or persistence changes, run the related test class/filter. For UI changes, verify the affected window in both light and dark themes. Do not default to `dotnet build` after Windows edits unless the change warrants it or the user asks; a successful build never substitutes for UI verification.
 
-**Entry point**: `KeyStats/App.xaml.cs` — single-instance mutex, theme init, service init, tray icon, context menu, windows, import/export. Exit sequence: analytics flush → monitor stop → stats flush → cleanup.
+## Architecture (data flow)
 
-**Core singleton services** (`KeyStats/Services/`):
-- `InputMonitorService` — global `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hooks via `SetWindowsHookEx`.
-- `StatsManager` — aggregation, persistence, formatting, history queries, midnight rollover, import/export.
-- `NotificationService` — Windows toast notifications.
-- `StartupManager` — `HKCU\...\Run` registry entry.
-
-**UI**: light MVVM (View + ViewModel, no framework) in `KeyStats/Views/` and `KeyStats/ViewModels/`; custom controls in `KeyStats/Views/Controls/`. **Helpers** in `KeyStats/Helpers/` (`NativeInterop`, `KeyNameMapper`, `ThemeManager`, `ActiveWindowManager`, `Converters`). **Models** in `KeyStats/Models/` (`DailyStats`, `AppStats`, `AppSettings`).
+1. `InputMonitorService` installs global `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hooks via `SetWindowsHookEx` and emits key/click/move/scroll events. Hook callbacks must stay non-blocking: always call `CallNextHookEx` and dispatch work through the thread pool. Mouse movement is sampled at 30 FPS; segments over 250 px are discarded as abnormal jumps.
+2. `StatsManager` (singleton) subscribes to those events, updates today's totals, per-key counts, and per-app stats under a lock, and rolls over at local midnight. `ActiveWindowManager` supplies app attribution.
+3. Persistence is debounced: saves are coalesced (2 s) and UI notifications are debounced (300 ms). JSON lives in `%LOCALAPPDATA%\KeyStats\` (`daily_stats.json`, `history.json`, `settings.json`). `StatsChanged` subscribers marshal to the WPF Dispatcher before updating ViewModels/Views. The UI is light MVVM (Views + ViewModels, no MVVM framework); charts and heatmaps use native WPF rendering (Canvas / DrawingContext, no charting library).
+4. Optional sync: `SyncCoordinator` reads stats from `StatsManager`, canonicalizes and encrypts records (`SyncKeyCanonicalizer`, `SyncCrypto`), plans batches (`SyncBatchPlanner`), and sends them through `SyncTransport`. Device credentials are protected with DPAPI (`SyncCredentialStore`); local sync state/cache live in `sync_state.json` and `sync_cache.json`.
+5. `App.xaml.cs` is the composition root: single-instance mutex, theme, services, tray icon, windows, import/export. Its exit sequence flushes analytics, disposes the tray, stops the input monitor, disposes the sync coordinator, flushes/disposes `StatsManager`, disposes `ThemeManager`, then releases the mutex.
 
 ## Critical Rules
 
 ### Privacy
-- Only store aggregate counts/distances. NEVER persist keystroke content, raw mouse paths, or clipboard data.
-- Secrets, IDs, key names, and counts are never analytics properties or log fields.
+- Only store aggregate counts, distances, and app attribution. NEVER persist keystroke content, raw mouse paths, or clipboard data.
+- Secrets, device/vault IDs, key names, and counts are never analytics properties or log fields. Analytics is optional and gated by `AppSettings.AnalyticsEnabled`.
 
 ### Thread Safety
-- Low-level hook callbacks run on the hook thread and must be non-blocking: always call `CallNextHookEx`, no file IO, serialization, or UI work — dispatch via the thread pool.
+- Low-level hook callbacks run on the hook thread: no file IO, serialization, or UI work — dispatch via the thread pool.
 - `StatsManager` shared state is lock-protected. UI updates must go through the WPF Dispatcher. Never mutate WPF-bound collections from background threads.
 - Timers fire on thread-pool threads; synchronize before touching shared state.
 
 ### Persistence
-- JSON files in `%LOCALAPPDATA%\KeyStats\` — `daily_stats.json`, `history.json`, `settings.json`. Keep backward-compatible when adding fields (old settings files must still load).
+- Keep JSON backward-compatible when adding fields; old settings and history files must still load. Prefer additive model changes, and include new fields in clone/normalize/merge/import/export paths.
 - Preserve the exit sequence in `App.OnExit`; new background/timer resources must be disposed on exit.
 
-### UI Style
-- Soft glass-card surfaces, thin separators, subtle shadows, 10–12pt card radius. Support runtime light/dark theme switching via `ThemeManager` dynamic resources.
+### Platform & UI
+- This project disables `ImplicitUsings`; add explicit `using` directives.
+- Use the shared `WindowBackdropHelper` and theme resources (`App.xaml` / `ThemeManager`) for window materials: keep soft glass-card surfaces, thin separators, subtle shadows, 10–12pt radii, and runtime light/dark switching via dynamic resources. Prefer `AllowsTransparency="False"` with the DWM backdrop, and change shared resources rather than hardcoding per-window colors.
 - User-facing copy is Chinese-first. When adding a new page/window, emit matching `pageview` and `click` analytics events.
+- Default to replying in Simplified Chinese, per `.github/instructions/instructions.md`.
 
 ## Sync Service
 
 - Wire protocol: `contracts/sync/v1/README.md`. Backend operations and deployment: `services/sync-worker/README.md`.
 - Do not change the protocol schema, fixtures, or Windows sync behavior without a corresponding plan.
+- Sync currently covers supported key/key-combination counts and mouse-button click counts only. Mouse movement distance, scroll distance, and per-app statistics are not synced.
+- D1 stores the current encrypted record and metadata; R2 stores immutable encrypted history revisions.
+- The worker must never receive plaintext statistics, key names, local dates, device profiles, or recovery seeds; it stores only HMACs and ciphertext. Pushes to `main` deploy staging; production deployment is a manual workflow requiring explicit confirmation.
 
 ## Automatic Commits
 
