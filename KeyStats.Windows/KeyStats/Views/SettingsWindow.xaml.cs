@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
 using System.Reflection;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -15,9 +17,19 @@ namespace KeyStats.Views;
 
 public partial class SettingsWindow : Window
 {
-    private const string GitHubUrl = "https://github.com/debugtheworldbot/keyStats";
+    private const string GitHubUrl = "https://github.com/lishaosongs/keyStats";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/lishaosongs/keyStats/releases/latest";
+    private const string ReleasesUrl = GitHubUrl + "/releases";
     private const double WindowEdgeMargin = 16;
+    private static readonly HttpClient UpdateHttpClient = CreateUpdateHttpClient();
     private bool _isLoadingFloatingStats = true;
+
+    private static HttpClient CreateUpdateHttpClient()
+    {
+        var client = new HttpClient { Timeout = System.TimeSpan.FromSeconds(10) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("KeyStats");
+        return client;
+    }
 
     public SettingsWindow()
     {
@@ -348,6 +360,75 @@ public partial class SettingsWindow : Window
         {
             MessageBox.Show(this, KeyStats.Properties.Strings.Settings_OpenGitHubFailedMessage, KeyStats.Properties.Strings.App_Name, MessageBoxButton.OK, MessageBoxImage.Information);
         }
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        App.CurrentApp?.TrackClick("check_update");
+        UpdateStatusTextBlock.Text = string.Empty;
+        UpdateStatusTextBlock.Visibility = Visibility.Collapsed;
+        CheckUpdateButton.IsEnabled = false;
+        CheckUpdateButton.Content = KeyStats.Properties.Strings.Settings_CheckingUpdate;
+
+        try
+        {
+            using var response = await UpdateHttpClient.GetAsync(LatestReleaseApiUrl);
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            var tagName = root.TryGetProperty("tag_name", out var tagElement) ? tagElement.GetString() : null;
+            var htmlUrl = root.TryGetProperty("html_url", out var urlElement) ? urlElement.GetString() : null;
+
+            if (IsNewerVersion(tagName))
+            {
+                Process.Start(new ProcessStartInfo(string.IsNullOrWhiteSpace(htmlUrl) ? ReleasesUrl : htmlUrl)
+                {
+                    UseShellExecute = true
+                });
+            }
+            else
+            {
+                ShowUpdateStatus(KeyStats.Properties.Strings.Settings_UpdateUpToDate);
+            }
+        }
+        catch
+        {
+            ShowUpdateStatus(KeyStats.Properties.Strings.Settings_UpdateCheckFailed);
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+            CheckUpdateButton.Content = KeyStats.Properties.Strings.Settings_CheckUpdate;
+        }
+    }
+
+    private static bool IsNewerVersion(string? tagName)
+    {
+        var latestVersion = ParseVersion(tagName);
+        if (latestVersion == null)
+        {
+            return true;
+        }
+
+        return !System.Version.TryParse(GetDisplayVersion(), out var currentVersion) ||
+               latestVersion > currentVersion;
+    }
+
+    private static System.Version? ParseVersion(string? tagName)
+    {
+        if (string.IsNullOrWhiteSpace(tagName))
+        {
+            return null;
+        }
+
+        var normalized = tagName!.Trim().TrimStart('v', 'V');
+        return System.Version.TryParse(normalized, out var version) ? version : null;
+    }
+
+    private void ShowUpdateStatus(string text)
+    {
+        UpdateStatusTextBlock.Text = text;
+        UpdateStatusTextBlock.Visibility = Visibility.Visible;
     }
 
     private bool _isInitializingLanguage = true;

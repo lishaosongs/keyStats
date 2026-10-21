@@ -72,6 +72,10 @@ public static class Strings
     public static string Settings_MouseScrollCalibrationDesc => Get(nameof(Settings_MouseScrollCalibrationDesc));
     public static string Settings_VersionFormat => Get(nameof(Settings_VersionFormat));
     public static string Settings_OpenGitHubFailedMessage => Get(nameof(Settings_OpenGitHubFailedMessage));
+    public static string Settings_CheckUpdate => Get(nameof(Settings_CheckUpdate));
+    public static string Settings_CheckingUpdate => Get(nameof(Settings_CheckingUpdate));
+    public static string Settings_UpdateUpToDate => Get(nameof(Settings_UpdateUpToDate));
+    public static string Settings_UpdateCheckFailed => Get(nameof(Settings_UpdateCheckFailed));
     public static string Settings_Sync => Get(nameof(Settings_Sync));
     public static string Settings_SyncDesc => Get(nameof(Settings_SyncDesc));
     public static string Settings_SyncUnavailable => Get(nameof(Settings_SyncUnavailable));

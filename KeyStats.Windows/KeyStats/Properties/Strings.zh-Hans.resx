@@ -126,6 +126,10 @@
   <data name="Settings_MouseScrollCalibrationDesc" xml:space="preserve"><value>根据屏幕分辨率和尺寸计算 PPI</value></data>
   <data name="Settings_VersionFormat" xml:space="preserve"><value>当前版本 {0}</value></data>
   <data name="Settings_OpenGitHubFailedMessage" xml:space="preserve"><value>无法打开 GitHub 页面。</value></data>
+  <data name="Settings_CheckUpdate" xml:space="preserve"><value>检查更新</value></data>
+  <data name="Settings_CheckingUpdate" xml:space="preserve"><value>检查中…</value></data>
+  <data name="Settings_UpdateUpToDate" xml:space="preserve"><value>已是最新版本</value></data>
+  <data name="Settings_UpdateCheckFailed" xml:space="preserve"><value>检查更新失败，请稍后重试</value></data>
 
   <data name="Stats_TodayHeader" xml:space="preserve"><value>今日统计</value></data>
   <data name="Stats_KeyPresses" xml:space="preserve"><value>按键次数</value></data>

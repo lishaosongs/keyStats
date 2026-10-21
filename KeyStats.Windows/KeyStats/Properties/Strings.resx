@@ -126,6 +126,10 @@
   <data name="Settings_MouseScrollCalibrationDesc" xml:space="preserve"><value>Calculate screen PPI from resolution and diagonal size</value></data>
   <data name="Settings_VersionFormat" xml:space="preserve"><value>Current version {0}</value></data>
   <data name="Settings_OpenGitHubFailedMessage" xml:space="preserve"><value>Could not open the GitHub page.</value></data>
+  <data name="Settings_CheckUpdate" xml:space="preserve"><value>Check for updates</value></data>
+  <data name="Settings_CheckingUpdate" xml:space="preserve"><value>Checking…</value></data>
+  <data name="Settings_UpdateUpToDate" xml:space="preserve"><value>You're up to date</value></data>
+  <data name="Settings_UpdateCheckFailed" xml:space="preserve"><value>Couldn't check for updates. Please try again later.</value></data>
 
   <data name="Stats_TodayHeader" xml:space="preserve"><value>Today's Stats</value></data>
   <data name="Stats_KeyPresses" xml:space="preserve"><value>Key Presses</value></data>

@@ -250,10 +250,25 @@
             </Grid>
         </Border>
 
-        <TextBlock x:Name="VersionTextBlock"
-                   Margin="2,10,0,0"
-                   FontSize="11"
-                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+        <StackPanel Orientation="Horizontal" Margin="2,10,0,0">
+            <TextBlock x:Name="VersionTextBlock"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}"/>
+            <Button x:Name="CheckUpdateButton"
+                    Content="{x:Static p:Strings.Settings_CheckUpdate}"
+                    Style="{DynamicResource GhostButton}"
+                    Margin="10,0,0,0"
+                    FontSize="11"
+                    VerticalAlignment="Center"
+                    Click="CheckUpdate_Click"/>
+            <TextBlock x:Name="UpdateStatusTextBlock"
+                       FontSize="11"
+                       Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       Visibility="Collapsed"/>
+        </StackPanel>
 
       </StackPanel>
     </ScrollViewer>
