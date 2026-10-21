@@ -139,6 +139,12 @@ try {
     $BinDir = Join-Path $ProjectDir "bin\$Configuration\net48"
     if (Test-Path $BinDir) {
         Get-ChildItem -Path $BinDir -Force | Where-Object { $_.Name -ne "win-x86" } | Copy-Item -Destination $OutputDir -Recurse -Force
+
+        # 移除 publish 中不含任何文件（含隐藏文件）的空目录，避免历史遗留的空 Assets/runtimes 结构进入 ZIP
+        Get-ChildItem -Path $OutputDir -Recurse -Directory -Force |
+            Sort-Object { $_.FullName.Length } -Descending |
+            Where-Object { -not (Get-ChildItem -Path $_.FullName -Recurse -File -Force) } |
+            Remove-Item -Recurse -Force
     }
 
     Write-Host "Build succeeded!" -ForegroundColor Green
