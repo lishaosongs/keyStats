@@ -2,14 +2,7 @@
 
 ## 安装
 
-1. 使用 Scoop 安装：
-
-   ```bash
-   scoop bucket add keystats https://github.com/debugtheworldbot/scoop-keystats
-   scoop install keystats
-   ```
-
-   或从 [GitHub Releases](https://github.com/debugtheworldbot/keyStats/releases) 下载 `KeyStats-Windows-*.zip`，解压后运行 `KeyStats.exe`。
+1. 从 [GitHub Releases](https://github.com/lishaosongs/keyStats/releases) 下载 `KeyStats-Windows-*.zip`，解压后运行 `KeyStats.exe`。
 
 2. 首次启动时 Windows 可能弹出安全警告，点击"仍要运行"。
 
