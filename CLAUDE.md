@@ -71,6 +71,14 @@ Validate according to the change, not with a full regression every time. For syn
 4. Optional sync: `SyncCoordinator` reads stats from `StatsManager`, canonicalizes and encrypts records (`SyncKeyCanonicalizer`, `SyncCrypto`), plans batches (`SyncBatchPlanner`), and sends them through `SyncTransport`. Device credentials are protected with DPAPI (`SyncCredentialStore`); local sync state/cache live in `sync_state.json` and `sync_cache.json`.
 5. `App.xaml.cs` is the composition root: single-instance mutex, theme, services, tray icon, windows, import/export. Its exit sequence flushes analytics, disposes the tray, stops the input monitor, disposes the sync coordinator, flushes/disposes `StatsManager`, disposes `ThemeManager`, then releases the mutex.
 
+## Windows implementation map
+
+- ViewModels: `TrayIconViewModel` (tray tooltip and commands), `StatsPopupViewModel` (today's totals, key breakdown, chart), plus `FloatingStatsViewModel`, `KeyHistoryViewModel`, `AppStatsViewModel`. Settings have no ViewModel — `SettingsWindow` code-behind binds `StatsManager.Instance.Settings` and calls `SaveSettings()`.
+- Controls (`Views/Controls/`): `StatItemControl`, `KeyBreakdownControl`, `StatsChartControl`, `KeyDistributionPieChartControl`, `KeyboardHeatmapControl`.
+- Input and interop: `InputMonitorService` exposes key, click, mouse-move, and scroll events; `Helpers/KeyNameMapper.cs` formats names such as `Ctrl+Shift+A`; `Helpers/NativeInterop.cs` holds the P/Invoke surface.
+- `StatsManager` raises both `StatsChanged(StatsUpdateKind)` and `StatsUpdateRequested`; saves are coalesced at 2 s, UI notifications debounced at 300 ms, settings saves at 500 ms.
+- Notifications, startup, and converters: `NotificationService` sends threshold toasts via `Microsoft.Toolkit.Uwp.Notifications`; `StartupManager` writes `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`; `Helpers/Converters.cs` provides `IntToBool`, `BoolToVisibility`, `InverseBool`, `BarWidth`.
+
 ## Critical Rules
 
 ### Privacy

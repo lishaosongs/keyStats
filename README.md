@@ -113,7 +113,7 @@ services/sync-worker/   E2EE 同步的 Cloudflare Worker 服务端
 scripts/                发布与 Scoop 发布脚本
 ```
 
-更多技术细节见 [`KeyStats.Windows/README.md`](./KeyStats.Windows/README.md) 和 [`KeyStats.Windows/KeyStats/CLAUDE.md`](./KeyStats.Windows/KeyStats/CLAUDE.md)。
+更多技术细节见 [`KeyStats.Windows/README.md`](./KeyStats.Windows/README.md) 和 [`CLAUDE.md`](./CLAUDE.md)。
 
 ## 许可证
 
