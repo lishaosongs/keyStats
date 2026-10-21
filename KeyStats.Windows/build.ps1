@@ -1,9 +1,10 @@
 # KeyStats Windows Build Script
-# Usage: .\build.ps1 [Release|Debug] [-SyncServiceBaseUrl <https-url>]
+# Usage: .\build.ps1 [Release|Debug] [-SyncServiceBaseUrl <https-url>] [-Version <x.y.z>]
 
 param(
     [string]$Configuration = "Release",
-    [string]$SyncServiceBaseUrl = ""
+    [string]$SyncServiceBaseUrl = "",
+    [string]$Version = ""
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -26,7 +27,60 @@ $ProjectDir = Join-Path $ScriptDir "KeyStats"
 $ProjectFile = Join-Path $ProjectDir "KeyStats.csproj"
 $OutputDir = Join-Path $ScriptDir "publish"
 $DistDir = Join-Path $ScriptDir "dist"
-$BuildProperties = @()
+
+# Version: explicit -Version wins; otherwise the nearest reachable v* tag of the current commit;
+# git unavailable or no tag (source snapshot) falls back to the csproj. Tags only label the build,
+# they are never written back to source.
+function Resolve-BuildVersion {
+    param(
+        [string]$ExplicitVersion,
+        [string]$ProjectFile,
+        [string]$RepoDir
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitVersion)) {
+        $version = $ExplicitVersion
+    }
+    else {
+        $version = $null
+        try {
+            $tag = & git -C $RepoDir describe --tags --abbrev=0 --match "v[0-9]*" 2>$null
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($tag)) {
+                $version = $tag.Trim()
+            }
+        }
+        catch {
+            # git is missing or the directory is not a repository.
+        }
+
+        if ([string]::IsNullOrWhiteSpace($version)) {
+            $match = Select-String -Path $ProjectFile -Pattern '<Version>([^<]+)</Version>'
+            $version = if ($match -and $match.Matches.Groups[1].Value) {
+                $match.Matches.Groups[1].Value.Trim()
+            }
+            else {
+                "1.0.0"
+            }
+        }
+    }
+
+    $normalized = $version.Trim().TrimStart('v', 'V')
+    if ($normalized -notmatch '^\d+(\.\d+){1,3}(-[0-9A-Za-z.-]+)?$') {
+        throw "Invalid version '$normalized'. Expected 2-4 numeric parts with optional prerelease suffix, e.g. 1.55 or 1.55-beta."
+    }
+
+    return $normalized
+}
+
+try {
+    $Version = Resolve-BuildVersion -ExplicitVersion $Version -ProjectFile $ProjectFile -RepoDir $ScriptDir
+}
+catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+$BuildProperties = @("/p:Version=$Version")
 $HasSyncServiceBaseUrl = -not [string]::IsNullOrWhiteSpace($SyncServiceBaseUrl)
 if ($HasSyncServiceBaseUrl) {
     $BuildProperties += "/p:SyncServiceBaseUrl=$SyncServiceBaseUrl"
@@ -34,6 +88,7 @@ if ($HasSyncServiceBaseUrl) {
 
 Write-Host "=== KeyStats Windows Build Script ===" -ForegroundColor Cyan
 Write-Host "Configuration: $Configuration" -ForegroundColor Yellow
+Write-Host "Version: $Version" -ForegroundColor Yellow
 Write-Host "Target Framework: .NET Framework 4.8" -ForegroundColor Yellow
 Write-Host "Sync service URL configured: $HasSyncServiceBaseUrl" -ForegroundColor Yellow
 Write-Host ""
@@ -153,15 +208,16 @@ finally {
     Pop-Location
 }
 
+$PublishedExe = Join-Path $OutputDir "KeyStats.exe"
+$PublishedProductVersion = (Get-Item $PublishedExe).VersionInfo.ProductVersion
+if (($PublishedProductVersion -split '\+')[0] -ne $Version) {
+    Write-Host "Error: Published KeyStats.exe ProductVersion '$PublishedProductVersion' does not match expected '$Version'." -ForegroundColor Red
+    exit 1
+}
+Write-Host "Verified published version: $PublishedProductVersion" -ForegroundColor Green
+
 Write-Host "Creating distribution package..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
-
-$VersionMatch = Select-String -Path $ProjectFile -Pattern '<Version>([^<]+)</Version>'
-if ($VersionMatch -and $VersionMatch.Matches.Groups[1].Value) {
-    $Version = $VersionMatch.Matches.Groups[1].Value.Trim()
-} else {
-    $Version = "1.0.0"
-}
 
 $ZipName = "KeyStats-Windows-$Version.zip"
 $ZipPath = Join-Path $DistDir $ZipName

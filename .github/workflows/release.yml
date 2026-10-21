@@ -27,28 +27,21 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Update app version
-        shell: pwsh
-        run: |
-          $csprojPath = "KeyStats.Windows/KeyStats/KeyStats.csproj"
-          $version = "${{ steps.version.outputs.VERSION }}"
-          (Get-Content $csprojPath) -replace '<Version>.*</Version>', "<Version>$version</Version>" | Set-Content $csprojPath
-          Write-Host "Updated Version to $version"
-
       - name: Build Windows app
         shell: pwsh
         working-directory: KeyStats.Windows
         run: |
+          $version = '${{ steps.version.outputs.VERSION }}'
           $syncUrl = $env:KEYSTATS_SYNC_SERVICE_URL
           if ([string]::IsNullOrWhiteSpace($syncUrl)) {
             Write-Host 'Sync service URL not configured; building without sync networking.'
-            .\build.ps1 -Configuration Release
+            .\build.ps1 -Configuration Release -Version $version
           }
           else {
             if ($syncUrl -notmatch '^https://[A-Za-z0-9.-]+\.workers\.dev/?$') {
               throw 'KEYSTATS_SYNC_PRODUCTION_URL must be a production workers.dev URL.'
             }
-            .\build.ps1 -Configuration Release -SyncServiceBaseUrl $syncUrl
+            .\build.ps1 -Configuration Release -Version $version -SyncServiceBaseUrl $syncUrl
           }
 
       - name: Upload Windows artifact
