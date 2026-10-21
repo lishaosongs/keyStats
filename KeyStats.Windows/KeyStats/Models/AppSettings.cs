@@ -74,6 +74,18 @@ public class AppSettings
     [JsonPropertyName("keyboardHeatmapWindowHeight")]
     public double? KeyboardHeatmapWindowHeight { get; set; }
 
+    [JsonPropertyName("keyHistoryWindowWidth")]
+    public double? KeyHistoryWindowWidth { get; set; }
+
+    [JsonPropertyName("keyHistoryWindowHeight")]
+    public double? KeyHistoryWindowHeight { get; set; }
+
+    [JsonPropertyName("appStatsWindowWidth")]
+    public double? AppStatsWindowWidth { get; set; }
+
+    [JsonPropertyName("appStatsWindowHeight")]
+    public double? AppStatsWindowHeight { get; set; }
+
     [JsonPropertyName("floatingStatsEnabled")]
     public bool FloatingStatsEnabled { get; set; }
 
