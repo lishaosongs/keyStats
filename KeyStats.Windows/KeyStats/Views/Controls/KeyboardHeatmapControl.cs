@@ -37,10 +37,12 @@ public class KeyboardHeatmapControl : FrameworkElement
     }
 
     private const double LayoutInset = 8;
+    private const double DeckPadding = 0.35;
 
     private static readonly HashSet<string> NumberKeyIds = new(Enumerable.Range(0, 10).Select(i => i.ToString(CultureInfo.InvariantCulture)));
     private static readonly IReadOnlyList<KeySpec> Layout = BuildLayout();
     private static readonly Rect LayoutBounds = ComputeLayoutBounds(Layout);
+    private static readonly Rect FrameBounds = InflateBounds(LayoutBounds, DeckPadding);
 
     public static readonly HashSet<string> SupportedKeyIds = new(Layout.Select(item => item.Id), StringComparer.Ordinal);
 
@@ -79,23 +81,95 @@ public class KeyboardHeatmapControl : FrameworkElement
         var isDarkMode = ThemeManager.Instance.IsDarkTheme;
         var defaultTextColor = isDarkMode ? Colors.White : ResolveColor("TextPrimaryBrush", Colors.Black);
         var textBrush = CreateBrush(defaultTextColor);
-        var borderColor = isDarkMode
-            ? Color.FromArgb(36, 255, 255, 255)
-            : Color.FromArgb(23, 0, 0, 0);
-        var borderPen = new Pen(CreateBrush(borderColor), 0.8);
-        borderPen.Freeze();
+
+        DrawDeck(drawingContext, metrics, isDarkMode);
 
         foreach (var key in Layout)
         {
             var frame = KeyFrame(key, metrics);
             var count = _keyCounts.TryGetValue(key.Id, out var value) ? value : 0;
             var fillColor = ColorForCount(count, isDarkMode);
-            var radius = Math.Max(4, metrics.Scale * 0.14);
 
-            drawingContext.DrawRoundedRectangle(CreateBrush(fillColor), borderPen, frame, radius, radius);
+            DrawKeycap(drawingContext, frame, fillColor, metrics.Scale, isDarkMode);
             DrawKeyLegend(drawingContext, key, frame, metrics.Scale, textBrush, defaultTextColor);
             DrawCountBadge(drawingContext, count, frame, metrics.Scale, isDarkMode);
         }
+    }
+
+    private static void DrawDeck(DrawingContext drawingContext, RenderMetrics metrics, bool isDarkMode)
+    {
+        var surface = ResolveColor("SurfaceBrush", isDarkMode ? Color.FromRgb(32, 32, 32) : Color.FromRgb(250, 250, 250));
+        var deckRect = new Rect(
+            metrics.Origin.X + FrameBounds.X * metrics.Scale,
+            metrics.Origin.Y + FrameBounds.Y * metrics.Scale,
+            FrameBounds.Width * metrics.Scale,
+            FrameBounds.Height * metrics.Scale);
+        var radius = Math.Max(6, metrics.Scale * 0.34);
+
+        var topBase = Blend(surface, Colors.Black, isDarkMode ? 0.38 : 0.06);
+        var bottomBase = Blend(surface, Colors.Black, isDarkMode ? 0.50 : 0.13);
+        var topColor = Color.FromArgb(170, topBase.R, topBase.G, topBase.B);
+        var bottomColor = Color.FromArgb(185, bottomBase.R, bottomBase.G, bottomBase.B);
+        var deckBrush = new LinearGradientBrush(topColor, bottomColor, 90);
+        deckBrush.Freeze();
+
+        var borderColor = isDarkMode
+            ? Color.FromArgb(34, 255, 255, 255)
+            : Color.FromArgb(30, 0, 0, 0);
+        var borderPen = new Pen(CreateBrush(borderColor), Math.Max(0.8, metrics.Scale * 0.02));
+        borderPen.Freeze();
+
+        drawingContext.DrawRoundedRectangle(deckBrush, borderPen, deckRect, radius, radius);
+
+        var highlightColor = isDarkMode
+            ? Color.FromArgb(22, 255, 255, 255)
+            : Color.FromArgb(90, 255, 255, 255);
+        var highlightPen = new Pen(CreateBrush(highlightColor), Math.Max(0.8, metrics.Scale * 0.02));
+        highlightPen.Freeze();
+        var highlightY = deckRect.Top + Math.Max(1, metrics.Scale * 0.035);
+        drawingContext.DrawLine(
+            highlightPen,
+            new Point(deckRect.Left + radius, highlightY),
+            new Point(deckRect.Right - radius, highlightY));
+    }
+
+    private static void DrawKeycap(DrawingContext drawingContext, Rect frame, Color fillColor, double scale, bool isDarkMode)
+    {
+        var radius = Math.Max(3.5, scale * 0.13);
+        var depth = Math.Max(1.2, scale * 0.055);
+
+        var sideRect = new Rect(frame.X, frame.Y + depth, frame.Width, frame.Height);
+        drawingContext.DrawRoundedRectangle(
+            CreateBrush(Shade(fillColor, isDarkMode ? -0.42 : -0.26)),
+            null,
+            sideRect,
+            radius,
+            radius);
+
+        var faceBrush = new LinearGradientBrush(
+            Shade(fillColor, isDarkMode ? 0.10 : 0.06),
+            isDarkMode ? Shade(fillColor, -0.08) : fillColor,
+            90);
+        faceBrush.Freeze();
+
+        var borderColor = isDarkMode
+            ? Color.FromArgb(38, 255, 255, 255)
+            : Color.FromArgb(30, 0, 0, 0);
+        var borderPen = new Pen(CreateBrush(borderColor), Math.Max(0.7, scale * 0.018));
+        borderPen.Freeze();
+        drawingContext.DrawRoundedRectangle(faceBrush, borderPen, frame, radius, radius);
+
+        var highlightColor = isDarkMode
+            ? Color.FromArgb(26, 255, 255, 255)
+            : Color.FromArgb(120, 255, 255, 255);
+        var highlightPen = new Pen(CreateBrush(highlightColor), Math.Max(0.8, scale * 0.02));
+        highlightPen.Freeze();
+        var highlightInset = radius * 0.85;
+        var highlightY = frame.Top + Math.Max(0.8, scale * 0.03);
+        drawingContext.DrawLine(
+            highlightPen,
+            new Point(frame.Left + highlightInset, highlightY),
+            new Point(frame.Right - highlightInset, highlightY));
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -130,14 +204,14 @@ public class KeyboardHeatmapControl : FrameworkElement
             return null;
         }
 
-        var scaleX = available.Width / LayoutBounds.Width;
-        var scaleY = available.Height / LayoutBounds.Height;
+        var scaleX = available.Width / FrameBounds.Width;
+        var scaleY = available.Height / FrameBounds.Height;
         var scale = Math.Min(scaleX, scaleY);
-        var width = LayoutBounds.Width * scale;
-        var height = LayoutBounds.Height * scale;
+        var width = FrameBounds.Width * scale;
+        var height = FrameBounds.Height * scale;
         var origin = new Point(
-            available.Left + (available.Width - width) / 2 - LayoutBounds.X * scale,
-            available.Top + (available.Height - height) / 2 - LayoutBounds.Y * scale);
+            available.Left + (available.Width - width) / 2 - FrameBounds.X * scale,
+            available.Top + (available.Height - height) / 2 - FrameBounds.Y * scale);
 
         return new RenderMetrics(scale, origin);
     }
@@ -386,6 +460,13 @@ public class KeyboardHeatmapControl : FrameworkElement
             (byte)Math.Round(from.B + (to.B - from.B) * progress));
     }
 
+    private static Color Shade(Color color, double amount)
+    {
+        return amount >= 0
+            ? Blend(color, Colors.White, amount)
+            : Blend(color, Colors.Black, -amount);
+    }
+
     private static SolidColorBrush CreateBrush(Color color)
     {
         var brush = new SolidColorBrush(color);
@@ -418,6 +499,20 @@ public class KeyboardHeatmapControl : FrameworkElement
         var right = keys.Max(item => item.FrameUnits.Right);
         var bottom = keys.Max(item => item.FrameUnits.Bottom);
         return new Rect(left, top, right - left, bottom - top);
+    }
+
+    private static Rect InflateBounds(Rect bounds, double amount)
+    {
+        if (bounds.IsEmpty)
+        {
+            return bounds;
+        }
+
+        return new Rect(
+            bounds.X - amount,
+            bounds.Y - amount,
+            bounds.Width + amount * 2,
+            bounds.Height + amount * 2);
     }
 
     private static IReadOnlyList<KeySpec> BuildLayout()
